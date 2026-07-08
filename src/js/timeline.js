@@ -907,6 +907,10 @@ function outlineMouseWheel(e) {
 
 // Keyboard shortcut A to select all keyframes
 document.addEventListener('keydown', function(args) {
+  // Don't hijack Ctrl/Cmd+A while typing in a text/number field (e.g. the
+  // timeline duration input) — let the browser select the field's text.
+  var t = args.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
   if (args.which === 65 && timeline && timeline._controlKeyPressed(args)) {
     timeline.selectAllKeyframes();
     args.preventDefault();

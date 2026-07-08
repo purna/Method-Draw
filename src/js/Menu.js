@@ -47,7 +47,9 @@ MD.Menu = function(){
   }
 
   function close(e){
-    if (e.target.nodeName && e.target.nodeName.toLowerCase() === "input") return false;
+    // Clicking an input (e.g. the timeline duration field) must not prevent
+    // default, otherwise the input can never receive focus. Just bail out.
+    if (e.target.nodeName && e.target.nodeName.toLowerCase() === "input") return;
     // Clicks inside a menu title (including child nodes like the logo SVG)
     // are handled by the menu title's own mousedown handler.
     if ($(e.target).closest('.menu_title').length) return false;

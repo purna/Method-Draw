@@ -1,6 +1,10 @@
 MD.EditorJson = function () {
     // Add JSON import/export handlers
-    $('#tool_import_json').on('click', function () {
+    $('#tool_import_json').on('click', function (e) {
+        // Only open the file dialog when the click originates from the menu
+        // item itself. Triggering the input's click bubbles back up to this
+        // handler, which would otherwise recurse infinitely (stack overflow).
+        if (e.target !== this) return;
         $('#tool_import_json_input').trigger('click');
     });
 

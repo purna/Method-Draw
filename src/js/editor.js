@@ -186,6 +186,9 @@ MD.Editor = function(){
   function elementChanged(window,elems){
     const mode = svgCanvas.getMode();
 
+    // Guard against empty/invalid element lists (e.g. during undo/redo).
+    if (!elems || !elems.length || !elems[0]) return;
+
     // if the element changed was the svg, then it could be a resolution change
     if (elems[0].tagName === "svg")  return editor.canvas.update(true);
 
