@@ -15,14 +15,26 @@ MD.Menu = function(){
   // top dropdown menus
   $('.menu_title')
     .on('mousedown', function() {
-      $("#menu_bar").toggleClass('active');
-      $('.menu').removeClass('open');
-      $(this).parent().addClass('open');
+      $("#tools_shapelib").hide();
+      var menu = $(this).parent();
+      if (menu.hasClass('open')) {
+        // clicking an already-open menu's title closes it
+        $('#menu_bar').removeClass('active');
+        menu.removeClass('open');
+      } else {
+        $('#menu_bar').addClass('active');
+        $('.menu').removeClass('open');
+        menu.addClass('open');
+      }
     })
-    .on('mouseover', function() {
-       $('.menu').removeClass('open');
-       $(this).parent().addClass('open');
-     });
+     .on('mouseover', function() {
+        // Only switch between menus on hover while one is already open,
+        // otherwise this fires before mousedown and immediately toggles the
+        // menu closed, forcing the user to click multiple times.
+        if (!$('#menu_bar').hasClass('active')) return;
+        $('.menu').removeClass('open');
+        $(this).parent().addClass('open');
+      });
   
   function blink(el) {
     el.style.background = "#fff";
@@ -36,10 +48,14 @@ MD.Menu = function(){
 
   function close(e){
     if (e.target.nodeName && e.target.nodeName.toLowerCase() === "input") return false;
-    if (!$(e.target).hasClass("menu_title") && !$(e.target).parent().hasClass("menu_title")) {
-      if(!$(e.target).hasClass("disabled") && $(e.target).hasClass("menu_item")) blink(e.target)
-      else $('#menu_bar').removeClass('active')
-    } 
+    // Clicks inside a menu title (including child nodes like the logo SVG)
+    // are handled by the menu title's own mousedown handler.
+    if ($(e.target).closest('.menu_title').length) return false;
+    if ($(e.target).closest('.menu_item').length) {
+      if ($(e.target).closest('.menu_item').hasClass('disabled')) $('#menu_bar').removeClass('active');
+      return false;
+    }
+    $('#menu_bar').removeClass('active');
   }
 
   function flash($menu){

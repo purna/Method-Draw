@@ -267,6 +267,23 @@ MD.Editor = function(){
 
   }
 
+  // Star/Polygon tool + selected-star editing. dragInput invokes the callback
+  // as callback(attr, value, completed), where attr is the input's data-attr
+  // (sides / radius / ratio / x / y) and completed is false while dragging,
+  // true on release.
+  function changeStarAttributes(attr, value, completed) {
+    var val = parseFloat(value);
+    if (isNaN(val)) return;
+    var opts = {};
+    if (attr === "sides") opts.sides = parseInt(val, 10);
+    else if (attr === "ratio") opts.ratio = parseFloat(val);
+    else if (attr === "radius" || attr === "width") opts.radius = parseFloat(val);
+    else if (attr === "x") opts.x = parseFloat(val);
+    else if (attr === "y") opts.y = parseFloat(val);
+    svgCanvas.setStarAttributes(opts);
+    svgCanvas.updateSelectedStar(opts, completed);
+  }
+
   function exportHandler(window, data) {
     var issues = data.issues;
     
@@ -373,6 +390,7 @@ MD.Editor = function(){
   this.selectedChanged = selectedChanged;
   this.elementChanged = elementChanged;
   this.changeAttribute = changeAttribute;
+  this.changeStarAttributes = changeStarAttributes;
   this.contextChanged = contextChanged;
   this.elementTransition = elementTransition;
   this.switchPaint = switchPaint;

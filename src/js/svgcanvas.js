@@ -35,6 +35,38 @@ $.SvgCanvas = function(container, config)
 // Namespace constants
 var svgns = "http://www.w3.org/2000/svg",
   xlinkns = "http://www.w3.org/1999/xlink",
+
+// Star/Polygon tool configuration. Defaults give a classic 5-point star;
+// holding Shift while drawing produces a polygon (ratio = 1). These can be
+// changed at runtime via setStarAttributes().
+  starSides = 5,
+  starRatio = 0.5,
+  starRotation = 0,
+  starRadius = 0;
+
+// Parameters of the star currently being drawn (used to stamp the element
+// with data so it can be edited later via the star panel).
+var drawnStar = null;
+
+// Build an SVG path "d" attribute for a star or polygon centred at (cx, cy).
+// ratio controls the inner radius relative to the outer radius: 0 gives a
+// fully spiked star, 1 gives a regular polygon.
+var buildStarPath = function(cx, cy, sides, radius, ratio, rotation) {
+  sides = Math.max(3, Math.round(sides));
+  var innerR = radius * ratio;
+  var step = Math.PI / sides;
+  var rot = (rotation - 90) * Math.PI / 180;
+  var d = '';
+  for (var i = 0; i < sides * 2; i++) {
+    var r = (i % 2 === 0) ? radius : innerR;
+    var a = rot + i * step;
+    var x = cx + r * Math.cos(a);
+    var y = cy + r * Math.sin(a);
+    d += (i === 0 ? 'M' : 'L') + x.toFixed(2) + ',' + y.toFixed(2);
+  }
+  return d + 'Z';
+};
+
   xmlns = "http://www.w3.org/XML/1998/namespace",
   xmlnsns = "http://www.w3.org/2000/xmlns/", // see http://www.w3.org/TR/REC-xml-names/#xmlReserved
   se_ns = "http://svg-edit.googlecode.com",
@@ -778,7 +810,11 @@ var getId, getNextId, call;
   // arg - Argument to pass through to the callback function
   call = c.call = function(event, arg) {
     if (events[event]) {
-      return events[event](this, arg);
+      var ret;
+      for (var i = 0; i < events[event].length; i++) {
+        ret = events[event][i](this, arg);
+      }
+      return ret;
     }
     //else {
     //  console.log("event: " + event + " not found", events)
@@ -786,18 +822,15 @@ var getId, getNextId, call;
   };
   
   // Function: bind
-  // Attaches a callback function to an event
+  // Attaches a callback function to an event. Multiple handlers may be bound
+  // to the same event; they are all invoked (in bind order) when the event fires.
   //
   // Parameters:
   // event - String indicating the name of the event
   // f - The callback function to bind to the event
-  // 
-  // Return:
-  // The previous event
   c.bind = function(event, f) {
-    var old = events[event];
-    events[event] = f;
-    return old;
+    if (!events[event]) events[event] = [];
+    events[event].push(f);
   };
   
 }(canvas));
@@ -2474,6 +2507,25 @@ var getMouseTarget = this.getMouseTarget = function(evt) {
           }
         });
         break;
+      case "star":
+        started = true;
+        start_x = x;
+        start_y = y;
+        var r0 = starRadius > 0 ? starRadius : 0;
+        drawnStar = {
+          cx: x, cy: y, r: r0,
+          sides: starSides, ratio: starRatio, rotation: starRotation
+        };
+        addSvgElementFromJson({
+          "element": "path",
+          "curStyles": true,
+          "attr": {
+            "d": buildStarPath(x, y, starSides, r0, starRatio, starRotation),
+            "id": getNextId(),
+            "opacity": cur_shape.opacity / 2
+          }
+        });
+        break;
       case "text":
         started = true;
         var newText = addSvgElementFromJson({
@@ -2876,6 +2928,15 @@ var getMouseTarget = this.getMouseTarget = function(evt) {
         shape.setAttributeNS(null, "cx", cx );
         shape.setAttributeNS(null, "cy", cy );
         break;
+      case "star":
+        var sr = starRadius > 0 ? starRadius : Math.sqrt((x - start_x) * (x - start_x) + (y - start_y) * (y - start_y));
+        var sratio = evt.shiftKey ? 1 : starRatio;
+        shape.setAttributeNS(null, "d", buildStarPath(start_x, start_y, starSides, sr, sratio, starRotation));
+        drawnStar = {
+          cx: start_x, cy: start_y, r: sr,
+          sides: starSides, ratio: sratio, rotation: starRotation
+        };
+        break;
       case "fhellipse":
       case "fhrect":
         freehand.minx = Math.min(real_x, freehand.minx);
@@ -3177,6 +3238,13 @@ var getMouseTarget = this.getMouseTarget = function(evt) {
       case "ellipse":
         var attrs = $(element).attr(["rx", "ry"]);
         keep = (attrs.rx != null || attrs.ry != null);
+        break;
+      case "star":
+        var sdx = x - start_x, sdy = y - start_y;
+        keep = starRadius > 0 || (Math.sqrt(sdx * sdx + sdy * sdy) > 0);
+        if (keep && drawnStar) {
+          element.setAttribute("data-star", JSON.stringify(drawnStar));
+        }
         break;
       case "fhellipse":
         if ((freehand.maxx - freehand.minx) > 0 &&
@@ -6811,6 +6879,51 @@ this.setMode = function(name) {
   textActions.clear();
   cur_properties = (selectedElements[0] && selectedElements[0].nodeName == 'text') ? cur_text : cur_shape;
   current_mode = name;
+};
+
+// Function: setStarAttributes
+// Configures the Star/Polygon tool.
+//
+// Parameters:
+// opts - Object with optional sides, ratio, rotation and radius properties.
+//        radius > 0 makes a click place a star of that radius (size is fixed
+//        rather than drag-determined).
+this.setStarAttributes = function(opts) {
+  if (opts.sides != null) starSides = Math.max(3, Math.round(opts.sides));
+  if (opts.ratio != null) starRatio = Math.min(1, Math.max(0, opts.ratio));
+  if (opts.rotation != null) starRotation = opts.rotation;
+  if (opts.radius != null) starRadius = Math.max(0, opts.radius);
+};
+
+// Function: getStarAttributes
+// Returns the current Star/Polygon tool configuration.
+this.getStarAttributes = function() {
+  return { sides: starSides, ratio: starRatio, rotation: starRotation, radius: starRadius };
+};
+
+// Function: updateSelectedStar
+// If the current selection is a star/polygon (stamped with data-star),
+// apply the given overrides and regenerate its path. Used by the star panel.
+//
+// Parameters:
+// opts - Object with optional sides, ratio, rotation and radius properties.
+this.updateSelectedStar = function(opts, undo) {
+  var elem = selectedElements[0];
+  if (!elem || elem.nodeName !== "path") return;
+  var data = elem.getAttribute("data-star");
+  if (!data) return;
+  var s = JSON.parse(data);
+  if (opts.sides != null) s.sides = Math.max(3, Math.round(opts.sides));
+  if (opts.ratio != null) s.ratio = Math.min(1, Math.max(0, opts.ratio));
+  if (opts.rotation != null) s.rotation = opts.rotation;
+  if (opts.radius != null) s.r = Math.max(0, opts.radius);
+  if (opts.x != null) s.cx = opts.x;
+  if (opts.y != null) s.cy = opts.y;
+  if (undo) canvas.undoMgr.beginUndoableChange("d", [elem]);
+  elem.setAttribute("data-star", JSON.stringify(s));
+  elem.setAttribute("d", buildStarPath(s.cx, s.cy, s.sides, s.r, s.ratio, s.rotation));
+  if (undo) canvas.undoMgr.finishUndoableChange();
+  call("changed", [elem]);
 };
 
 // Group: Element Styling

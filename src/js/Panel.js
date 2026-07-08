@@ -39,6 +39,13 @@ MD.Panel = function(){
     $('#group_opacity').dragInput({ min: 0,    max: 100,   step:  5,  callback: editor.changeAttribute,     cursor: true,  start: 100             });
     $('#blur')         .dragInput({ min: 0,    max: 10,    step: .1,  callback: editor.changeBlur,          cursor: true,  start: 0               });
 
+    // Star / Polygon panel
+    $('#sides').dragInput({ min: 3, max: 24, step: 1, callback: editor.changeStarAttributes, cursor: false });
+    $('#star_radius').dragInput({ min: 1, max: 2000, step: 1, callback: editor.changeStarAttributes, cursor: false });
+    $('#star_ratio').dragInput({ min: 0, max: 1, step: 0.01, callback: editor.changeStarAttributes, cursor: false });
+    $('#star_x').dragInput({ min: null, max: null, step: 1, callback: editor.changeStarAttributes, cursor: false });
+    $('#star_y').dragInput({ min: null, max: null, step: 1, callback: editor.changeStarAttributes, cursor: false });
+
     // Align
 
     $('#position_opts .align_button').on("click", function(){
@@ -178,7 +185,20 @@ MD.Panel = function(){
 
       if (!elem && !multiselected) {      
         $("#stroke_panel").hide();
-        $("#canvas_panel").show();
+        if (svgCanvas.getMode() === "star") {
+          // No selection yet: show the star panel so the tool can be
+          // configured (sides / radius / ratio) before drawing.
+          $("#canvas_panel").hide();
+          $("#star_panel").show();
+          var t = svgCanvas.getStarAttributes();
+          $('#sides').val(t.sides);
+          $('#star_radius').val(t.radius || 0);
+          $('#star_ratio').val(t.ratio);
+          $('#star_x').val('');
+          $('#star_y').val('');
+        } else {
+          $("#canvas_panel").show();
+        }
       }
  
       if (elem !== null) {
@@ -270,7 +290,25 @@ MD.Panel = function(){
          svg : [],
        };
        
-       var el_name = elem.tagName;
+        var el_name = elem.tagName;
+
+        // A star/polygon is a <path> stamped with data-star. Treat it as a
+        // "star" element so the star_panel is shown and populated instead of
+        // the generic path_panel.
+        if (el_name === "path" && elem.getAttribute && elem.getAttribute("data-star")) {
+          el_name = "star";
+          $('#star_panel').show();
+          var s = JSON.parse(elem.getAttribute("data-star"));
+          $('#sides').val(Math.round(s.sides));
+          $('#star_radius').val(Math.round(s.r));
+          $('#star_ratio').val(s.ratio);
+          $('#star_x').val(Math.round(s.cx));
+          $('#star_y').val(Math.round(s.cy));
+          ['sides','star_radius','star_ratio','star_x','star_y'].forEach(function(id) {
+            var n = document.getElementById(id);
+            if (n && n.getAttribute("data-cursor") === "true") $.fn.dragInput.updateCursor(n);
+          });
+        }
        
        if($(elem).data('gsvg')) {
          $('#g_panel').show();

@@ -140,7 +140,7 @@ MD.Canvas = function(){
   function rename(str) {
     if (str.length) {
       $('#canvas_title').val(str);
-      svgCanvas.setDocumentTitle(str);
+      if (svgCanvas) svgCanvas.setDocumentTitle(str);
     }
   }
 

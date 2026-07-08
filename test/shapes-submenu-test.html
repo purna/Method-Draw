@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Shapes Submenu Test (Method Draw)</title>
+<style>
+/* ---- CSS variables (subset of css/base.css) ---- */
+:root {
+  --x1: 4px;  --x2: 8px;  --x3: 12px; --x4: 16px; --x5: 20px;
+  --x6: 24px; --x7: 28px; --x8: 32px; --x12: 48px; --x16: 64px;
+  --z0: #111827; --z1: #1e2433; --z2: #2b313f; --z3: #393e4c;
+  --z4: #474c59; --z5: #565a66; --z6: #656974; --z7: #747782;
+  --z8: #848790; --z13: #d6d8db; --z14: #e7e9eb; --z15: #f9fafb;
+  --accent7: #0b89f0; --accent8: #3797ff; --accent13: #c3d4fd;
+  --accent15: #eaeffc;
+  --shadow: 0 var(--x1) var(--x8) rgba(0,0,0,0.4);
+  --ui-font: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+}
+
+/* ---- Menu bar (subset of css/menu.css) ---- */
+body { margin: 0; font-family: var(--ui-font); background: #f0f1f3; }
+
+#menu_bar {
+  padding: 0 0 0 var(--x12);
+  position: relative;
+  z-index: 2;
+  height: var(--x8);
+  display: flex;
+  background: var(--z1);
+}
+
+#menu_bar.active .menu.open .menu_list { display: block; }
+
+.menu {
+  position: relative;
+  z-index: 5;
+  color: var(--z3);
+  display: inline-block;
+}
+
+.menu_title {
+  cursor: pointer;
+  display: inline-block;
+  z-index: 10;
+  color: var(--z15);
+  position: relative;
+  line-height: var(--x8);
+  padding: 0 var(--x3);
+  vertical-align: top;
+}
+
+.menu .menu_title:hover { background: var(--z2); }
+
+.menu_list {
+  position: absolute;
+  left: 0;
+  top: var(--x8);
+  white-space: nowrap;
+  background: var(--z15);
+  padding: var(--x2) 0;
+  border-radius: 0 var(--x2) var(--x2) var(--x2);
+  box-shadow: var(--shadow);
+  display: none;
+  z-index: 20;
+}
+
+.menu_list .menu_item {
+  position: relative;
+  overflow: hidden;
+  line-height: var(--x6);
+  padding: var(--x1) var(--x16) var(--x1) var(--x6);
+  cursor: pointer;
+  color: var(--z3);
+}
+
+.menu_list .menu_item:hover { background: var(--accent13); color: #000; }
+
+.menu_item .submenu-caret {
+  position: absolute;
+  right: var(--x2);
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* ---- Tool buttons in the submenu (subset of css/tools.css + css/shapelib.css) ---- */
+#current_tool {
+  position: fixed;
+  top: var(--x12);
+  left: var(--x16);
+  font-family: var(--ui-font);
+  font-size: 14px;
+  background: #fff;
+  padding: var(--x1) var(--x3);
+  border-radius: var(--x1);
+  box-shadow: var(--shadow);
+}
+
+.tools_flyout {
+  position: absolute;
+  display: none;
+  cursor: pointer;
+  width: 240px;
+  left: 100%;
+  top: -4px;
+  background: var(--z15);
+  border-radius: var(--x1);
+  box-shadow: var(--shadow);
+  padding: var(--x2);
+  z-index: 30;
+}
+
+.tools_flyout .tool_button {
+  float: left;
+  background-color: var(--z15);
+  height: var(--x10);
+  width: var(--x10);
+  cursor: pointer;
+  line-height: 60px;
+  text-align: center;
+  transform: scale(0.8);
+}
+
+.tools_flyout .tool_button svg {
+  fill: var(--z4);
+  vertical-align: center;
+}
+
+.tools_flyout .tool_button:hover svg { fill: var(--z1); }
+
+.tools_flyout .tool_button.current svg { fill: var(--accent8); }
+
+.tools_flyout .tool_button.current {
+  transform: scale(1);
+  outline: 2px solid var(--accent8);
+  border-radius: var(--x1);
+}
+
+/* ---- Left side toolbar (subset of css/tools.css) ---- */
+#tools_left {
+  position: absolute;
+  border-right: none;
+  width: var(--x12);
+  top: var(--x8);
+  bottom: 0;
+  left: 0;
+  z-index: 4;
+}
+
+#tools_left .tool_button {
+  position: relative;
+  height: var(--x12);
+  width: var(--x12);
+  cursor: pointer;
+  line-height: 60px;
+  text-align: center;
+  transform: scale(0.8);
+}
+
+#tools_left .tool_button svg {
+  vertical-align: center;
+  fill: var(--z5);
+}
+
+#tools_left .tool_button:hover { transform: scale(1); }
+#tools_left .tool_button:hover svg { fill: var(--z13); }
+
+#tools_left .tool_button.current { transform: scale(1.4); }
+#tools_left .tool_button.current svg { fill: var(--accent8); }
+
+/* Submenu flyout attached to a side-toolbar button (subset of css/shapelib.css) */
+#tools_left .tool_menu {
+  position: absolute;
+  display: none;
+  left: var(--x12);
+  top: 0;
+  width: 240px;
+  background: var(--z15);
+  border-radius: var(--x1);
+  box-shadow: var(--shadow);
+  padding: var(--x2);
+  z-index: 50;
+}
+
+#tools_left .tool_menu .tool_button {
+  float: left;
+  background-color: var(--z15);
+  height: var(--x10);
+  width: var(--x10);
+}
+
+#tools_left .tool_menu .tool_button svg {
+  fill: var(--z4);
+  vertical-align: center;
+}
+
+#tools_left .tool_menu .tool_button:hover svg { fill: var(--z1); }
+
+#tools_left .tool_menu .tool_button.current svg { fill: var(--accent8); }
+
+#tools_left .tool_menu .tool_button.current {
+  transform: scale(1);
+  outline: 2px solid var(--accent8);
+  border-radius: var(--x1);
+}
+</style>
+</head>
+<body>
+
+<div id="menu_bar">
+  <div class="menu" id="shapes_menu">
+    <div class="menu_title" id="shapes_title">Shapes</div>
+    <div class="menu_list" id="shapes_list">
+      <div class="menu_item" id="shapes_trigger">Draw Shapes<span class="submenu-caret">&#9656;</span></div>
+      <!-- The submenu grouping the shape tools -->
+      <div class="tools_flyout" id="shapes_flyout">
+        <div class="tool_button" data-mode="rect" title="Square/Rect Tool [R]">
+          <svg viewBox="0 0 27 27" width="24" height="24">
+            <path d="M 0 8 L 0 24 L 24 24 L 25 8 L 0 8 Z" />
+          </svg>
+        </div>
+        <div class="tool_button" data-mode="ellipse" title="Ellipse/Circle Tool [C]">
+          <svg viewBox="0 0 27 27" width="24" height="24">
+            <ellipse cx="13" cy="13" rx="13" ry="9"></ellipse>
+          </svg>
+        </div>
+        <div class="tool_button" data-mode="star" title="Star Tool [S]">
+          <svg viewBox="0 0 27 27" width="24" height="24">
+            <polygon points="14.43,10 12,2 9.57,10 2,10 8.18,14.41 5.83,22 12,17.31 18.18,22 15.83,14.41 22,10" />
+          </svg>
+        </div>
+        <div class="tool_button" data-mode="line" title="Line Tool [L]">
+          <svg viewBox="0 0 27 27" width="24" height="24">
+            <path d="M 3 1 L 26 24 L 24 26 L 1 3 L 3 1 Z"></path>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="tools_left" class="tools_panel">
+  <div class="tool_button" id="tool_shapes" data-mode="shapes" title="Shapes">
+    <svg viewBox="0 0 27 27" width="24" height="24">
+      <path d="M0 0h12v12H0zM15 15h12v12H15zM15 0h12v12H15zM0 15h12v12H0z" />
+    </svg>
+    <!-- Submenu grouping the shape tools (mirrors #tool_shapelib .tool_menu) -->
+    <div class="tool_menu" id="shapes_tool_menu">
+      <div class="tool_button" data-mode="rect" title="Square/Rect Tool [R]">
+        <svg viewBox="0 0 27 27" width="24" height="24">
+          <path d="M 0 8 L 0 24 L 24 24 L 25 8 L 0 8 Z" />
+        </svg>
+      </div>
+      <div class="tool_button" data-mode="ellipse" title="Ellipse/Circle Tool [C]">
+        <svg viewBox="0 0 27 27" width="24" height="24">
+          <ellipse cx="13" cy="13" rx="13" ry="9"></ellipse>
+        </svg>
+      </div>
+      <div class="tool_button" data-mode="star" title="Star Tool [S]">
+        <svg viewBox="0 0 27 27" width="24" height="24">
+          <polygon points="14.43,10 12,2 9.57,10 2,10 8.18,14.41 5.83,22 12,17.31 18.18,22 15.83,14.41 22,10" />
+        </svg>
+      </div>
+      <div class="tool_button" data-mode="line" title="Line Tool [L]">
+        <svg viewBox="0 0 27 27" width="24" height="24">
+          <path d="M 3 1 L 26 24 L 24 26 L 1 3 L 3 1 Z"></path>
+        </svg>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="current_tool">Current tool: <strong id="current_tool_name">none</strong></div>
+
+<script>
+(function () {
+  var menuBar  = document.getElementById('menu_bar');
+  var menu     = document.getElementById('shapes_menu');
+  var title    = document.getElementById('shapes_title');
+  var trigger  = document.getElementById('shapes_trigger');
+  var flyout   = document.getElementById('shapes_flyout');
+  var nameEl   = document.getElementById('current_tool_name');
+
+  // Open/close the top "Shapes" menu.
+  title.addEventListener('mousedown', function (e) {
+    e.stopPropagation();
+    if (menu.classList.contains('open')) {
+      menuBar.classList.remove('active');
+      menu.classList.remove('open');
+    } else {
+      menuBar.classList.add('active');
+      menu.classList.add('open');
+    }
+  });
+
+  // Show the shape submenu when hovering / interacting with its trigger.
+  trigger.addEventListener('mouseenter', function () {
+    if (menu.classList.contains('open')) flyout.style.display = 'block';
+  });
+  trigger.addEventListener('click', function (e) {
+    e.stopPropagation();
+    flyout.style.display = 'block';
+  });
+
+  // Selecting a shape tool.
+  // Mirror method-draw's toolButtonClick(): items inside a flyout do NOT
+  // close it, so the user can switch to another shape without first
+  // clicking off the submenu.
+  flyout.addEventListener('click', function (e) {
+    var btn = e.target.closest('.tool_button');
+    if (!btn) return;
+    e.stopPropagation();
+    var mode = btn.getAttribute('data-mode');
+
+    var current = flyout.querySelector('.tool_button.current');
+    if (current) current.classList.remove('current');
+    btn.classList.add('current');
+
+    nameEl.textContent = mode;
+  });
+
+  // Keep the submenu open while the pointer is over it.
+  flyout.addEventListener('mouseleave', function () {
+    flyout.style.display = 'none';
+  });
+
+  // Clicking anywhere else closes the menu (but not the flyout click above,
+  // which is stopped). This is the "click off to dismiss" path.
+  document.body.addEventListener('mousedown', function (e) {
+    if (!menu.contains(e.target)) {
+      menuBar.classList.remove('active');
+      menu.classList.remove('open');
+      flyout.style.display = 'none';
+    }
+  });
+})();
+
+// ---- Left side-toolbar submenu (mirrors #tool_shapelib) -----------------
+(function () {
+  var nameEl = document.getElementById('current_tool_name');
+  var sideBtn = document.getElementById('tool_shapes');
+  var sideMenu = document.getElementById('shapes_tool_menu');
+
+  function show() { sideMenu.style.display = 'block'; }
+  function hide() { sideMenu.style.display = 'none'; }
+
+  sideBtn.addEventListener('mouseenter', show);
+  sideMenu.addEventListener('mouseenter', show);
+
+  // Hide only when the pointer truly leaves both the button and its submenu.
+  sideBtn.addEventListener('mouseleave', function (e) {
+    if (!sideMenu.contains(e.relatedTarget)) hide();
+  });
+  sideMenu.addEventListener('mouseleave', function (e) {
+    if (!sideBtn.contains(e.relatedTarget)) hide();
+  });
+
+  // Selecting a shape tool from the side submenu. Like the top flyout, the
+  // submenu stays open so the user can switch shapes without clicking off.
+  sideMenu.addEventListener('click', function (e) {
+    var btn = e.target.closest('.tool_button');
+    if (!btn) return;
+    e.stopPropagation();
+    var mode = btn.getAttribute('data-mode');
+
+    var current = sideMenu.querySelector('.tool_button.current');
+    if (current) current.classList.remove('current');
+    btn.classList.add('current');
+    sideBtn.classList.add('current');
+
+    nameEl.textContent = mode;
+  });
+
+  document.body.addEventListener('mousedown', function (e) {
+    if (!sideBtn.contains(e.target)) hide();
+  });
+})();
+</script>
+</body>
+</html>

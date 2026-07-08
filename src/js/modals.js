@@ -1,7 +1,7 @@
 // globals
-const svgCanvas = new $.SvgCanvas(document.getElementById("svgcanvas"));
-const editor = new MD.Editor();
-const state = new State();
+var svgCanvas;
+var editor = new MD.Editor();
+var state = new State();
 
 editor.modal = {
   about: new MD.Modal({

@@ -30,13 +30,14 @@
 }
 
 .inverted #svgcanvas,
-.inverted #workarea {
+.inverted #workarea{
   background:  var(--z1);
 }
 
 #workarea.rect, #workarea.line, #workarea.ellipse, #workarea.path, #workarea.shapelib {
   cursor: crosshair;
 }
+
 
 #workarea.text {
   cursor: text;

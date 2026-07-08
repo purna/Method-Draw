@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Star Shape Test (Method Draw)</title>
+<style>
+  :root {
+    --z1: #1e2433; --z2: #2b313f; --z15: #f9fafb;
+    --accent8: #3797ff; --ui-font: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  body {
+    margin: 0; font-family: var(--ui-font); background: #f0f1f3; color: var(--z1);
+    display: flex; min-height: 100vh;
+  }
+  #panel {
+    width: 300px; flex: 0 0 300px; background: var(--z1); color: var(--z15);
+    padding: 16px; box-sizing: border-box; overflow: auto;
+  }
+  #panel h1 { font-size: 16px; margin: 0 0 16px; }
+  .ctrl { margin-bottom: 14px; }
+  .ctrl label { display: block; font-size: 12px; margin-bottom: 4px; color: #c3d4fd; }
+  .ctrl .row { display: flex; align-items: center; gap: 8px; }
+  .ctrl input[type=range] { flex: 1; }
+  .ctrl .val { width: 52px; text-align: right; font-variant-numeric: tabular-nums; font-size: 12px; }
+  .ctrl input[type=number] { width: 64px; }
+  #stage { flex: 1; display: flex; align-items: center; justify-content: center; background: #fff; }
+  svg { border: 1px solid #ddd; background:
+    linear-gradient(45deg,#eee 25%,transparent 25%,transparent 75%,#eee 75%),
+    linear-gradient(45deg,#eee 25%,#fff 25%,#fff 75%,#eee 75%);
+    background-size: 20px 20px; background-position: 0 0, 10px 10px; }
+  .hint { font-size: 11px; color: #848790; margin-top: 16px; line-height: 1.4; }
+</style>
+</head>
+<body>
+  <div id="panel">
+    <h1>Star Shape</h1>
+
+    <div class="ctrl">
+      <label>Position X</label>
+      <div class="row"><input id="cx" type="range" min="0" max="600" step="1" value="300"><span class="val" id="cx_v"></span></div>
+    </div>
+    <div class="ctrl">
+      <label>Position Y</label>
+      <div class="row"><input id="cy" type="range" min="0" max="600" step="1" value="300"><span class="val" id="cy_v"></span></div>
+    </div>
+    <div class="ctrl">
+      <label>Sides (points)</label>
+      <div class="row"><input id="sides" type="range" min="3" max="24" step="1" value="5"><span class="val" id="sides_v"></span></div>
+    </div>
+    <div class="ctrl">
+      <label>Radius (outer)</label>
+      <div class="row"><input id="radius" type="range" min="10" max="280" step="1" value="180"><span class="val" id="radius_v"></span></div>
+    </div>
+    <div class="ctrl">
+      <label>Ratio (inner radius / point angle)</label>
+      <div class="row"><input id="ratio" type="range" min="0" max="1" step="0.01" value="0.5"><span class="val" id="ratio_v"></span></div>
+    </div>
+    <div class="ctrl">
+      <label>Rotation (deg)</label>
+      <div class="row"><input id="rotation" type="range" min="0" max="360" step="1" value="0"><span class="val" id="rotation_v"></span></div>
+    </div>
+    <div class="ctrl">
+      <label>Opacity</label>
+      <div class="row"><input id="opacity" type="range" min="0" max="1" step="0.01" value="1"><span class="val" id="opacity_v"></span></div>
+    </div>
+    <div class="ctrl">
+      <label>Blur (px)</label>
+      <div class="row"><input id="blur" type="range" min="0" max="40" step="0.5" value="0"><span class="val" id="blur_v"></span></div>
+    </div>
+
+    <div class="hint">
+      Ratio (0 to 1) controls the inner radius relative to the outer radius and therefore
+      the point angle. 0 makes a fully spiked star; 1 makes a polygon.
+    </div>
+  </div>
+
+  <div id="stage">
+    <svg id="svg" width="600" height="600" viewBox="0 0 600 600">
+      <defs>
+        <filter id="starBlur" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur id="blurNode" in="SourceGraphic" stdDeviation="0" />
+        </filter>
+      </defs>
+      <path id="star" fill="#3797ff" stroke="#1e2433" stroke-width="2"
+            filter="url(#starBlur)" />
+    </svg>
+  </div>
+
+<script>
+(function() {
+  var ids = ['cx','cy','sides','radius','ratio','rotation','opacity','blur'];
+  var els = {};
+  ids.forEach(function(id) { els[id] = document.getElementById(id); });
+
+  var star = document.getElementById('star');
+  var blurNode = document.getElementById('blurNode');
+
+  // Build a star path. Ratio sets the inner radius relative to outer radius,
+  // and its sign controls whether points are sharp (positive) or flat/inverted
+  // (negative). Sides sets the number of points.
+  function buildStarPath(cx, cy, sides, radius, ratio, rotation) {
+    sides = Math.max(3, Math.round(sides));
+    var innerR = radius * ratio;
+
+    var pointR = radius;
+    var valleyR = innerR;
+
+    var rot = (rotation - 90) * Math.PI / 180; // start pointing up
+    var step = Math.PI / sides;               // half step between point/valley
+    var d = '';
+    for (var i = 0; i < sides * 2; i++) {
+      var r = (i % 2 === 0) ? pointR : valleyR;
+      var a = rot + i * step;
+      var x = cx + r * Math.cos(a);
+      var y = cy + r * Math.sin(a);
+      d += (i === 0 ? 'M' : 'L') + x.toFixed(2) + ',' + y.toFixed(2);
+    }
+    return d + 'Z';
+  }
+
+  function update() {
+    var v = {};
+    ids.forEach(function(id) { v[id] = parseFloat(els[id].value); });
+
+    star.setAttribute('d', buildStarPath(v.cx, v.cy, v.sides, v.radius, v.ratio, v.rotation));
+    star.setAttribute('opacity', v.opacity);
+    blurNode.setAttribute('stdDeviation', v.blur);
+
+    ids.forEach(function(id) {
+      var out = document.getElementById(id + '_v');
+      if (out) out.textContent = els[id].value;
+    });
+  }
+
+  ids.forEach(function(id) {
+    els[id].addEventListener('input', update);
+  });
+
+  update();
+})();
+</script>
+</body>
+</html>

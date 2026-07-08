@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <title>Boolean (Join) Tools Submenu Test (Method Draw)</title>
+  <style>
+    /* ---- CSS variables (subset of css/base.css) ---- */
+    :root {
+      --x1: 4px;
+      --x2: 8px;
+      --x3: 12px;
+      --x4: 16px;
+      --x5: 20px;
+      --x6: 24px;
+      --x7: 28px;
+      --x8: 32px;
+      --x10: 40px;
+      --x12: 48px;
+      --x16: 64px;
+      --z0: #111827;
+      --z1: #1e2433;
+      --z2: #2b313f;
+      --z3: #393e4c;
+      --z4: #474c59;
+      --z5: #565a66;
+      --z6: #656974;
+      --z7: #747782;
+      --z8: #848790;
+      --z13: #d6d8db;
+      --z14: #e7e9eb;
+      --z15: #f9fafb;
+      --accent7: #0b89f0;
+      --accent8: #3797ff;
+      --accent13: #c3d4fd;
+      --accent15: #eaeffc;
+      --accent9: #62a3ff;
+      --shadow: 0 var(--x1) var(--x8) rgba(0, 0, 0, 0.4);
+      --ui-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    /* ---- Menu bar (subset of css/menu.css) ---- */
+    body {
+      margin: 0;
+      font-family: var(--ui-font);
+      background: #f0f1f3;
+      color: var(--z1);
+    }
+
+    #menu_bar {
+      padding: 0 0 0 var(--x12);
+      position: relative;
+      z-index: 2;
+      height: var(--x8);
+      display: flex;
+      background: var(--z1);
+    }
+
+    #menu_bar.active .menu.open .menu_list {
+      display: block;
+    }
+
+    .menu {
+      position: relative;
+      z-index: 5;
+      color: var(--z3);
+      display: inline-block;
+    }
+
+    .menu_title {
+      cursor: pointer;
+      display: inline-block;
+      z-index: 10;
+      color: var(--z15);
+      position: relative;
+      line-height: var(--x8);
+      padding: 0 var(--x3);
+      vertical-align: top;
+    }
+
+    .menu .menu_title:hover {
+      background: var(--z2);
+    }
+
+    .menu_list {
+      position: absolute;
+      left: 0;
+      top: var(--x8);
+      white-space: nowrap;
+      background: var(--z15);
+      padding: var(--x2) 0;
+      border-radius: 0 var(--x2) var(--x2) var(--x2);
+      box-shadow: var(--shadow);
+      display: none;
+      z-index: 20;
+    }
+
+    .menu_list .menu_item {
+      position: relative;
+      overflow: hidden;
+      line-height: var(--x6);
+      padding: var(--x1) var(--x16) var(--x1) var(--x6);
+      cursor: pointer;
+      color: var(--z3);
+    }
+
+    .menu_list .menu_item:hover {
+      background: var(--accent13);
+      color: #000;
+    }
+
+    .menu_item .submenu-caret {
+      position: absolute;
+      right: var(--x2);
+      top: 50%;
+      transform: translateY(-50%);
+    }
+
+    /* ---- Tool buttons in the submenu (subset of css/tools.css + css/shapelib.css) ---- */
+    #status {
+      position: fixed;
+      top: var(--x12);
+      left: var(--x16);
+      font-size: 14px;
+      background: #fff;
+      padding: var(--x1) var(--x3);
+      border-radius: var(--x1);
+      box-shadow: var(--shadow);
+    }
+
+    #status strong {
+      color: var(--accent8);
+    }
+
+    .tools_flyout {
+      position: absolute;
+      display: none;
+      cursor: pointer;
+      width: 256px;
+      left: 100%;
+      top: -4px;
+      background: var(--z15);
+      border-radius: var(--x1);
+      box-shadow: var(--shadow);
+      padding: var(--x2);
+      z-index: 30;
+    }
+
+    .tools_flyout .tool_button {
+      float: left;
+      background-color: var(--z15);
+      height: var(--x10);
+      width: var(--x10);
+      cursor: pointer;
+      line-height: 60px;
+      text-align: center;
+      transform: scale(0.8);
+    }
+
+    .tools_flyout .tool_button svg {
+      fill: var(--z4);
+      vertical-align: center;
+      color: var(--z4);
+    }
+
+    .tools_flyout .tool_button:hover svg {
+      fill: var(--z1);
+      color: var(--z1);
+    }
+
+    .tools_flyout .tool_button.current svg {
+      fill: var(--accent8);
+      color: var(--accent8);
+    }
+
+    .tools_flyout .tool_button.current {
+      transform: scale(1);
+      outline: 2px solid var(--accent8);
+      border-radius: var(--x1);
+    }
+
+    /* ---- Demo / preview area ---- */
+    #demo {
+      margin: var(--x12) var(--x16);
+      max-width: 520px;
+      background: #fff;
+      border-radius: var(--x2);
+      padding: var(--x4);
+      box-shadow: var(--shadow);
+    }
+
+    #demo h2 {
+      font-size: 15px;
+      margin: 0 0 var(--x2);
+    }
+
+    #demo p {
+      font-size: 13px;
+      color: var(--z5);
+      margin: 0 0 var(--x3);
+    }
+
+    #preview {
+      display: block;
+      margin: 0 auto;
+      background: var(--z14);
+      border-radius: var(--x1);
+    }
+
+    #result {
+      margin-top: var(--x3);
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    #result.pass {
+      color: #1a7f37;
+    }
+
+    #result.fail {
+      color: #cf222e;
+    }
+
+    /* ---- Left side toolbar (subset of css/tools.css) ---- */
+    #tools_left {
+      position: absolute;
+      border-right: none;
+      width: var(--x12);
+      top: var(--x8);
+      bottom: 0;
+      left: 0;
+      z-index: 4;
+    }
+
+    #tools_left .tool_button {
+      position: relative;
+      height: var(--x12);
+      width: var(--x12);
+      cursor: pointer;
+      line-height: 60px;
+      text-align: center;
+      transform: scale(0.8);
+    }
+
+    #tools_left .tool_button svg {
+      vertical-align: center;
+      color: var(--z5);
+      fill: var(--z5);
+    }
+
+    #tools_left .tool_button:hover {
+      transform: scale(1);
+    }
+
+    #tools_left .tool_button:hover svg {
+      fill: var(--z13);
+      color: var(--z13);
+    }
+
+    #tools_left .tool_button.current {
+      transform: scale(1.4);
+    }
+
+    #tools_left .tool_button.current svg {
+      fill: var(--accent8);
+      color: var(--accent8);
+    }
+
+    /* Submenu flyout attached to a side-toolbar button (subset of css/shapelib.css) */
+    #tools_left .tool_menu {
+      position: absolute;
+      display: none;
+      left: var(--x12);
+      top: 0;
+      width: 256px;
+      background: var(--z15);
+      border-radius: var(--x1);
+      box-shadow: var(--shadow);
+      padding: var(--x2);
+      z-index: 50;
+    }
+
+    #tools_left .tool_menu .tool_button {
+      float: left;
+      background-color: var(--z15);
+      height: var(--x10);
+      width: var(--x10);
+    }
+
+    #tools_left .tool_menu .tool_button svg {
+      fill: var(--z4);
+      color: var(--z4);
+    }
+
+    #tools_left .tool_menu .tool_button:hover svg {
+      fill: var(--z1);
+      color: var(--z1);
+    }
+
+    #tools_left .tool_menu .tool_button.current svg {
+      fill: var(--accent8);
+      color: var(--accent8);
+    }
+
+    #tools_left .tool_menu .tool_button.current {
+      transform: scale(1);
+      outline: 2px solid var(--accent8);
+      border-radius: var(--x1);
+    }
+  </style>
+</head>
+
+<body>
+
+  <div id="menu_bar">
+    <div class="menu" id="join_menu">
+      <div class="menu_title" id="join_title">Join</div>
+      <div class="menu_list" id="join_list">
+        <div class="menu_item" id="join_trigger">Joining Tools<span class="submenu-caret">&#9656;</span></div>
+        <!-- The submenu grouping the boolean / joining tools -->
+        <div class="tools_flyout" id="join_flyout">
+          <div class="tool_button" data-mode="union" title="Union (Combine)">
+            <svg viewBox="0 0 24 24" width="24" height="24">
+              <circle cx="9" cy="12" r="7" fill="currentColor" fill-opacity="50%" />
+              <circle cx="15" cy="12" r="7" fill="currentColor" />
+            </svg>
+          </div>
+          <div class="tool_button" data-mode="subtract" title="Subtract (A - B)">
+            <svg viewBox="0 0 24 24" width="24" height="24">
+              <defs>
+                <mask id="m-sub">
+                  <rect width="24" height="24" fill="#fff" />
+                  <circle cx="15" cy="12" r="7" fill="#000" />
+                </mask>
+              </defs>
+              <circle cx="9" cy="12" r="7" fill="currentColor" mask="url(#m-sub)" />
+            </svg>
+          </div>
+          <div class="tool_button" data-mode="intersect" title="Intersect (A &cap; B)">
+            <svg viewBox="0 0 24 24" width="24" height="24">
+              <defs>
+                <mask id="m-int">
+                  <circle cx="15" cy="12" r="7" fill="#fff" />
+                </mask>
+              </defs>
+              <circle cx="9" cy="12" r="7" fill="currentColor" mask="url(#m-int)" />
+            </svg>
+          </div>
+          <div class="tool_button" data-mode="exclude" title="Exclude (XOR)">
+            <svg viewBox="0 0 24 24" width="24" height="24">
+              <defs>
+                <mask id="m-ex1">
+                  <rect width="24" height="24" fill="#fff" />
+                  <circle cx="15" cy="12" r="7" fill="#000" />
+                </mask>
+                <mask id="m-ex2">
+                  <rect width="24" height="24" fill="#fff" />
+                  <circle cx="9" cy="12" r="7" fill="#000" />
+                </mask>
+              </defs>
+              <circle cx="9" cy="12" r="7" fill="currentColor" mask="url(#m-ex1)" />
+              <circle cx="15" cy="12" r="7" fill="currentColor" mask="url(#m-ex2)" />
+            </svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="tools_left" class="tools_panel">
+    <div class="tool_button" id="tool_join" data-mode="join" title="Join Tools">
+      <svg viewBox="0 0 24 24" width="24" height="24">
+        <circle cx="9" cy="12" r="7" fill="currentColor" />
+        <circle cx="15" cy="12" r="7" fill="currentColor" />
+      </svg>
+      <!-- Submenu grouping the boolean / joining tools -->
+      <div class="tool_menu" id="join_tool_menu">
+        <div class="tool_button" data-mode="union" title="Union (Combine)">
+          <svg viewBox="0 0 24 24" width="24" height="24">
+            <circle cx="9" cy="12" r="7" fill="currentColor" />
+            <circle cx="15" cy="12" r="7" fill="currentColor" />
+          </svg>
+        </div>
+        <div class="tool_button" data-mode="subtract" title="Subtract (A - B)">
+          <svg viewBox="0 0 24 24" width="24" height="24">
+            <defs>
+              <mask id="m-sub2">
+                <rect width="24" height="24" fill="#fff" />
+                <circle cx="15" cy="12" r="7" fill="#000" />
+              </mask>
+            </defs>
+            <circle cx="9" cy="12" r="7" fill="currentColor" mask="url(#m-sub2)" />
+          </svg>
+        </div>
+        <div class="tool_button" data-mode="intersect" title="Intersect (A &cap; B)">
+          <svg viewBox="0 0 24 24" width="24" height="24">
+            <defs>
+              <mask id="m-int2">
+                <circle cx="15" cy="12" r="7" fill="#fff" />
+              </mask>
+            </defs>
+            <circle cx="9" cy="12" r="7" fill="currentColor" mask="url(#m-int2)" />
+          </svg>
+        </div>
+        <div class="tool_button" data-mode="exclude" title="Exclude (XOR)">
+          <svg viewBox="0 0 24 24" width="24" height="24">
+            <defs>
+              <mask id="m-ex1b">
+                <rect width="24" height="24" fill="#fff" />
+                <circle cx="15" cy="12" r="7" fill="#000" />
+              </mask>
+              <mask id="m-ex2b">
+                <rect width="24" height="24" fill="#fff" />
+                <circle cx="9" cy="12" r="7" fill="#000" />
+              </mask>
+            </defs>
+            <circle cx="9" cy="12" r="7" fill="currentColor" mask="url(#m-ex1b)" />
+            <circle cx="15" cy="12" r="7" fill="currentColor" mask="url(#m-ex2b)" />
+          </svg>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="status">Current joining tool: <strong id="current_tool_name">none</strong></div>
+
+  <div id="demo">
+    <h2>Boolean operation preview</h2>
+    <p>Subject (blue) and clip (orange) are two overlapping squares. The highlighted
+      region shows the result of the selected joining tool, computed by the
+      reference implementation in <code>tests/booleanPath.js</code>.</p>
+    <svg id="preview" width="220" height="220" viewBox="0 0 220 220"></svg>
+    <div id="result">&nbsp;</div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- Reference implementation (verbatim from tests/booleanPath.js)         -->
+  <!-- ===================================================================== -->
+  <script>
+    (function (root, factory) {
+      root.svgedit = root.svgedit || {};
+      root.svgedit.boolop = factory();
+    })(typeof self !== 'undefined' ? self : this, function () {
+      'use strict';
+      var EPS = 1e-9;
+      function Vertex(x, y) {
+        this.x = x; this.y = y; this.next = null; this.prev = null;
+        this.neighbour = null; this.alpha = 0; this.intersection = false;
+        this.entry = false; this.visited = false;
+      }
+      function signedArea(poly) {
+        var a = 0;
+        for (var i = 0, n = poly.length; i < n; i++) {
+          var p = poly[i], q = poly[(i + 1) % n];
+          a += p[0] * q[1] - q[0] * p[1];
+        }
+        return a / 2;
+      }
+      function area(poly) { return Math.abs(signedArea(poly)); }
+      function pointInPolygon(pt, poly) {
+        var x = pt[0], y = pt[1], inside = false;
+        for (var i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+          var xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1];
+          var intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+          if (intersect) inside = !inside;
+        }
+        return inside;
+      }
+      function buildList(poly) {
+        var head = null, prev = null;
+        for (var i = 0; i < poly.length; i++) {
+          var v = new Vertex(poly[i][0], poly[i][1]);
+          if (!head) head = v; else { prev.next = v; v.prev = prev; }
+          prev = v;
+        }
+        prev.next = head; head.prev = prev;
+        return head;
+      }
+      function ringFromList(head) {
+        var ring = [], v = head;
+        do { if (!v.intersection) ring.push([v.x, v.y]); v = v.next; } while (v !== head);
+        return ring;
+      }
+      function insertIntersection(listHead, start, end, alpha, point) {
+        var v = new Vertex(point[0], point[1]);
+        v.intersection = true; v.alpha = alpha;
+        var cur = start;
+        while (cur.next !== listHead && cur.next !== end && cur.next.alpha < alpha) cur = cur.next;
+        v.next = cur.next; v.prev = cur; cur.next.prev = v; cur.next = v;
+        return v;
+      }
+      function findIntersections(subjHead, clipHead) {
+        var s = subjHead;
+        do {
+          var sNext = s.next, dx1 = sNext.x - s.x, dy1 = sNext.y - s.y, c = clipHead;
+          do {
+            var cNext = c.next, dx2 = cNext.x - c.x, dy2 = cNext.y - c.y;
+            var denom = dy1 * dx2 - dx1 * dy2;
+            if (Math.abs(denom) > EPS) {
+              var a = ((c.y - s.y) * dx2 - (c.x - s.x) * dy2) / denom;
+              var b = ((c.y - s.y) * dx1 - (c.x - s.x) * dy1) / denom;
+              if (a > EPS && a < 1 - EPS && b > EPS && b < 1 - EPS) {
+                var px = s.x + a * dx1, py = s.y + a * dy1;
+                var sv = insertIntersection(subjHead, s, sNext, a, [px, py]);
+                var cv = insertIntersection(clipHead, c, cNext, b, [px, py]);
+                sv.neighbour = cv; cv.neighbour = sv;
+              }
+            }
+            c = cNext;
+          } while (c !== clipHead);
+          s = sNext;
+        } while (s !== subjHead);
+      }
+      function markEntryExit(subjHead, clipHead) {
+        var inside = pointInPolygon([clipHead.x, clipHead.y], ringFromList(subjHead));
+        var c = clipHead;
+        do {
+          if (c.intersection) { c.entry = !inside; inside = !inside; }
+          c = c.next;
+        } while (c !== clipHead);
+        var s = subjHead;
+        do { if (s.intersection) s.entry = !s.neighbour.entry; s = s.next; } while (s !== subjHead);
+      }
+      function trace(subjHead) {
+        var results = [], start = subjHead;
+        do {
+          if (start.intersection && !start.visited) {
+            var ring = [], v = start;
+            do {
+              v.visited = true; v.neighbour.visited = true;
+              if (v.entry) { do { ring.push([v.x, v.y]); v = v.next; } while (!v.intersection); }
+              else { do { ring.push([v.x, v.y]); v = v.prev; } while (!v.intersection); }
+              v = v.neighbour;
+            } while (!v.visited);
+            if (ring.length >= 3) results.push(ring);
+          }
+          start = start.next;
+        } while (start !== subjHead);
+        return results;
+      }
+      function invertEntryExit(head) {
+        var v = head;
+        do { if (v.intersection) v.entry = !v.entry; v = v.next; } while (v !== head);
+      }
+      function clipOperation(subjPoly, clipPoly, invertSubj, invertClip) {
+        var subjHead = buildList(subjPoly), clipHead = buildList(clipPoly);
+        findIntersections(subjHead, clipHead);
+        markEntryExit(subjHead, clipHead);
+        if (invertSubj) invertEntryExit(subjHead);
+        if (invertClip) invertEntryExit(clipHead);
+        return trace(subjHead);
+      }
+      function totalArea(rings) {
+        var sum = 0;
+        for (var i = 0; i < rings.length; i++) sum += signedArea(rings[i]);
+        return Math.abs(sum);
+      }
+      function run(op, subj, clip) {
+        var s = subj.slice(); if (signedArea(s) < 0) s.reverse();
+        var c = clip.slice(); if (signedArea(c) < 0) c.reverse();
+        var intersect = clipOperation(s, c, false, false);
+        if (intersect.length === 0) {
+          var cInS = pointInPolygon(c[0], s), sInC = pointInPolygon(s[0], c);
+          if (cInS) {
+            switch (op) {
+              case 'union': return [s];
+              case 'intersect': return [c];
+              case 'subtract': return [s, c.slice().reverse()];
+              case 'exclude': return [s, c.slice().reverse()];
+            }
+          } else if (sInC) {
+            switch (op) {
+              case 'union': return [c];
+              case 'intersect': return [s];
+              case 'subtract': return [];
+              case 'exclude': return [c, s.slice().reverse()];
+            }
+          } else {
+            switch (op) {
+              case 'union': return [s, c];
+              case 'intersect': return [];
+              case 'subtract': return [s];
+              case 'exclude': return [s, c];
+            }
+          }
+        }
+        if (op === 'intersect') return intersect;
+        if (op === 'union') return clipOperation(s, c, true, true);
+        if (op === 'subtract') return clipOperation(s, c, false, true);
+        if (op === 'exclude') {
+          var ab = clipOperation(s, c, false, true).map(function (r) { return signedArea(r) < 0 ? r.slice().reverse() : r; });
+          var ba = clipOperation(c, s, false, true).map(function (r) { return signedArea(r) < 0 ? r.slice().reverse() : r; });
+          return ab.concat(ba);
+        }
+        throw new Error('Unknown boolean op: ' + op);
+      }
+      function opMulti(op, subjectRings, clipRings) {
+        var out = [];
+        for (var i = 0; i < subjectRings.length; i++) {
+          var acc = [subjectRings[i]];
+          for (var j = 0; j < clipRings.length; j++) {
+            var next = [];
+            for (var k = 0; k < acc.length; k++) {
+              var res = run(op, acc[k], clipRings[j]);
+              for (var r = 0; r < res.length; r++) next.push(res[r]);
+            }
+            acc = next;
+          }
+          for (var m = 0; m < acc.length; m++) out.push(acc[m]);
+        }
+        return out;
+      }
+      return {
+        union: function (subject, clip) { return opMulti('union', subject, clip); },
+        subtract: function (subject, clip) { return opMulti('subtract', subject, clip); },
+        intersect: function (subject, clip) { return opMulti('intersect', subject, clip); },
+        exclude: function (subject, clip) { return opMulti('exclude', subject, clip); },
+        _internal: { signedArea: signedArea, area: area, totalArea: totalArea, pointInPolygon: pointInPolygon }
+      };
+    });
+  </script>
+
+  <!-- ===================================================================== -->
+  <!-- UI behaviour + live preview                                           -->
+  <!-- ===================================================================== -->
+  <script>
+    (function () {
+      var menuBar = document.getElementById('menu_bar');
+      var menu = document.getElementById('join_menu');
+      var title = document.getElementById('join_title');
+      var trigger = document.getElementById('join_trigger');
+      var flyout = document.getElementById('join_flyout');
+      var nameEl = document.getElementById('current_tool_name');
+      var boolop = window.svgedit.boolop;
+
+      var currentTool = 'none';
+
+      // Two overlapping squares (side 80, offset by (40,40)).
+      var subject = [[40, 40], [120, 40], [120, 120], [40, 120]];
+      var clip = [[80, 80], [160, 80], [160, 160], [80, 160]];
+
+      function render() {
+        if (currentTool === 'none') return;
+        var rings = boolop[currentTool]([subject], [clip]);
+        var area = boolop._internal.totalArea(rings);
+
+        var svgns = 'http://www.w3.org/2000/svg';
+        var svg = document.getElementById('preview');
+        while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+        function poly(points, fill, opacity) {
+          var p = document.createElementNS(svgns, 'polygon');
+          p.setAttribute('points', points.map(function (pt) { return pt[0] + ',' + pt[1]; }).join(' '));
+          p.setAttribute('fill', fill);
+          if (opacity != null) p.setAttribute('fill-opacity', opacity);
+          p.setAttribute('stroke', '#fff');
+          p.setAttribute('stroke-width', '1');
+          return p;
+        }
+        // faint inputs
+        svg.appendChild(poly(subject, '#3797ff', 0.25));
+        svg.appendChild(poly(clip, '#f59e0b', 0.25));
+        // result
+        var g = document.createElementNS(svgns, 'g');
+        g.setAttribute('fill-rule', 'evenodd');
+        rings.forEach(function (r) { g.appendChild(poly(r, '#3797ff', 0.85)); });
+        svg.appendChild(g);
+
+        document.getElementById('result').textContent =
+          currentTool + ': ' + rings.length + ' ring(s), area = ' + area;
+      }
+
+      // Open/close the top "Join" menu.
+      title.addEventListener('mousedown', function (e) {
+        e.stopPropagation();
+        if (menu.classList.contains('open')) {
+          menuBar.classList.remove('active'); menu.classList.remove('open');
+        } else {
+          menuBar.classList.add('active'); menu.classList.add('open');
+        }
+      });
+
+      // Show the submenu when hovering / interacting with its trigger.
+      trigger.addEventListener('mouseenter', function () {
+        if (menu.classList.contains('open')) flyout.style.display = 'block';
+      });
+      trigger.addEventListener('click', function (e) {
+        e.stopPropagation(); flyout.style.display = 'block';
+      });
+
+      // Selecting a joining tool.
+      // Mirror method-draw's toolButtonClick(): items inside a flyout do NOT
+      // close it, so the user can switch to another joining tool without first
+      // clicking off the submenu.
+      flyout.addEventListener('click', function (e) {
+        var btn = e.target.closest('.tool_button');
+        if (!btn) return;
+        e.stopPropagation();
+        var mode = btn.getAttribute('data-mode');
+
+        var current = flyout.querySelector('.tool_button.current');
+        if (current) current.classList.remove('current');
+        btn.classList.add('current');
+
+        currentTool = mode;
+        nameEl.textContent = mode;
+        render();
+      });
+
+      // Keep the submenu open while the pointer is over it.
+      flyout.addEventListener('mouseleave', function () { flyout.style.display = 'none'; });
+
+      // Clicking anywhere else closes the menu.
+      document.body.addEventListener('mousedown', function (e) {
+        if (!menu.contains(e.target)) {
+          menuBar.classList.remove('active'); menu.classList.remove('open');
+          flyout.style.display = 'none';
+        }
+      });
+
+      // Tiny in-page self-test mirroring tests/boolean-tools.test.js expectations.
+      (function selftest() {
+        var pass = 0, fail = 0, msg = [];
+        function check(name, got, want) {
+          if (Math.abs(got - want) < 0.5) { pass++; }
+          else { fail++; msg.push(name + ': got ' + got + ' want ' + want); }
+        }
+        check('union area', boolop._internal.totalArea(boolop.union([subject], [clip])), 11200);
+        check('subtract area', boolop._internal.totalArea(boolop.subtract([subject], [clip])), 4800);
+        check('intersect area', boolop._internal.totalArea(boolop.intersect([subject], [clip])), 1600);
+        check('exclude area', boolop._internal.totalArea(boolop.exclude([subject], [clip])), 9600);
+        var el = document.getElementById('result');
+        if (fail === 0) { el.textContent = pass + ' self-checks passed'; el.className = 'pass'; }
+        else { el.textContent = fail + ' self-checks FAILED: ' + msg.join('; '); el.className = 'fail'; }
+      })();
+
+      // ---- Left side-toolbar submenu (mirrors #tool_shapelib) -----------------
+      var sideBtn = document.getElementById('tool_join');
+      var sideMenu = document.getElementById('join_tool_menu');
+
+      function showSide() { sideMenu.style.display = 'block'; }
+      function hideSide() { sideMenu.style.display = 'none'; }
+
+      sideBtn.addEventListener('mouseenter', showSide);
+      sideMenu.addEventListener('mouseenter', showSide);
+      sideBtn.addEventListener('mouseleave', function (e) {
+        if (!sideMenu.contains(e.relatedTarget)) hideSide();
+      });
+      sideMenu.addEventListener('mouseleave', function (e) {
+        if (!sideBtn.contains(e.relatedTarget)) hideSide();
+      });
+
+      // Selecting a joining tool from the side submenu: the submenu stays open so
+      // the user can switch tools without first clicking off.
+      sideMenu.addEventListener('click', function (e) {
+        var btn = e.target.closest('.tool_button');
+        if (!btn) return;
+        e.stopPropagation();
+        var mode = btn.getAttribute('data-mode');
+
+        var current = sideMenu.querySelector('.tool_button.current');
+        if (current) current.classList.remove('current');
+        btn.classList.add('current');
+        sideBtn.classList.add('current');
+
+        currentTool = mode;
+        nameEl.textContent = mode;
+        render();
+      });
+
+      document.body.addEventListener('mousedown', function (e) {
+        if (!sideBtn.contains(e.target)) hideSide();
+      });
+    })();
+  </script>
+</body>
+
+</html>

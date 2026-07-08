@@ -65,3 +65,50 @@
   top: 2px;
   left: 1px;
 }
+
+/* Shapes submenu: a vertical flyout attached to the side of the Shapes
+   button (inside #tools_left). It appears to the right of the button. */
+#tool_shapes {
+  position: relative;
+  transform: scale(1);
+}
+
+#tools_left .tool_menu {
+  position: absolute;
+  display: none;
+  left: var(--x12);
+  top: 0;
+  background: var(--z15);
+  border-radius: 0 var(--x2) var(--x2) var(--x2);
+  box-shadow: var(--shadow);
+  padding: var(--x2);
+  z-index: 50;
+}
+
+#tools_left .tool_menu .tool_button {
+  display: block;
+  background-color: var(--z15);
+  height: var(--x10);
+  width: var(--x10);
+  transform: scale(1);
+  line-height: normal;
+  margin: 0 auto;
+}
+
+#tools_left .tool_menu .tool_button svg {
+  fill: var(--z4);
+  vertical-align: middle;
+}
+
+#tools_left .tool_menu .tool_button:hover svg {
+  fill: var(--z1);
+}
+
+#tools_left .tool_menu .tool_button.current svg {
+  fill: var(--accent8);
+}
+
+#tools_left .tool_menu .tool_button.current {
+  outline: 2px solid var(--accent8);
+  border-radius: var(--x1);
+}
