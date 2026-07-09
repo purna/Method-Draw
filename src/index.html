@@ -939,6 +939,8 @@
             title="Total length of the animation timeline in milliseconds" />
         </label>
         <div style="flex: 1"></div>
+        <button class="flex-left button mat-icon material-icons mat-icon-no-color" id="tool_timeline_export"
+          title="Export animation (CSS + SVG)">file_download</button>
         <button class="flex-left button mat-icon material-icons mat-icon-no-color" id="tool_timeline_delete_keyframe"
           title="Remove selected keyframe">close</button>
         <button class="flex-left button mat-icon material-icons mat-icon-no-color" id="tool_timeline_add_keyframe"
@@ -954,6 +956,10 @@
         <div id="timeline"></div>
       </div>
     </div>
+
+    <button id="timeline-easing-edit-btn" class="timeline-floating-icon-btn" title="Set animation curve" type="button">&#9998;</button>
+    <div id="timeline-property-popover" class="timeline-popover"></div>
+    <div id="timeline-easing-popover" class="timeline-popover"></div>
 
   </div> <!-- /app -->
 
@@ -1043,6 +1049,7 @@
   <script type="text/javascript" src="js/paste.js"></script>
   <script type="text/javascript" src="js/modals.js"></script>
   <script type="text/javascript" src="js/start.js"></script>
+  <script type="text/javascript" src="js/easing.js"></script>
   <script type="text/javascript" src="js/timeline.js"></script>
   <!-- endbuild -->
 

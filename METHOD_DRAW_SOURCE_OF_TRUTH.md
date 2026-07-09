@@ -3,6 +3,15 @@
 **Version:** 2.0
 **Date:** 2026-07-08
 
+## 0. Online & Distribution
+
+- **Online Demo:** https://editor.method.ac
+- **Donate:** https://method.ac/donate/
+- **License:** MIT
+- **Copyright:** Mark MacKay [mark@method.ac](mailto:mark@method.ac)
+
+---
+
 ## 1. Project Overview
 
 Method Draw is a web-based vector drawing application designed for simplicity, usability, and a focus on creative flow. It originated as a fork of the powerful open-source [SVG-Edit](https://github.com/SVG-Edit/svgedit) project. The primary motivation for the fork was to streamline the user experience by removing overly complex and less frequently used features, such as the full layer system, complex path segment manipulation, and obscure connector tools. This simplification allows Method Draw to be more approachable for designers, illustrators, and hobbyists who need a quick and intuitive tool for creating vector graphics.
@@ -47,9 +56,9 @@ The application is a Single Page Application (SPA) that runs entirely in the bro
 
 4.  **The Animation Timeline (`timeline.js`):** A distinct module for creating animations. It manages keyframes, properties, and playback. It reads data from the canvas elements and generates animations. The implementation is planned to move from a CSS-based to a `requestAnimationFrame`-based engine for more control.
 
-5.  **SVG-Edit Core (`svgedit.js`):** The foundational library inherited from the original SVG-Edit project. It provides a rich set of utilities for SVG manipulation, path mathematics, history management (undo/redo), and more.
+5.  **SVG-Edit Core Utilities (e.g., `svgutils.js`, `path.js`, `math.js`):** The foundational libraries inherited from the original SVG-Edit project. They provide a rich set of utilities for SVG manipulation, path mathematics, history management (undo/redo), and more.
 
-6.  **Persistence and File Handling:** Logic for saving the current drawing (including animation data) and loading SVG files.
+6.  **Persistence and File Handling:** Logic for saving the current drawing (including animation data) and loading SVG files. This is handled by `js/dao.js` and `js/lib/filesaver.js`.
 
 ```
    +-----------------------------------------------------------------+
@@ -66,11 +75,11 @@ The application is a Single Page Application (SPA) that runs entirely in the bro
    | | js/method-draw.js <--> js/canvas.js <------------> js/timeline.js | |
    | | (UI Controller)     (Canvas & State Mgmt)      (Animation Logic)  | |
    | |     |                   |                           |       | |
-   | |     v                   v                           v       | |
-   | | +---------------------------------------------------------+ | |
-   | | |                 js/svgedit.js (Core Lib)                | | |
-   | | | (Path Math, SVG Utils, Transforms, UndoManager)         | | |
-   | | +---------------------------------------------------------+ | |
+   | |     |                   |                           |       | |
+   | |     +-------------------v---------------------------+       | |
+   | |                         |                                   | |
+   | |     (Core Utilities: svgutils.js, path.js, math.js)         | |
+   | |                         |                                   | |
    | +-------------------------------------------------------------+ |
    +-----------------------------------------------------------------+
 ```
@@ -89,12 +98,30 @@ Below is a summary of the important files and directories within the `src` direc
 | `font/`                        | Web fonts used in the application UI.                                                                                                    |
 | `img/`                         | Image assets, icons, and cursors for the UI.                                                                                             |
 | `js/`                          | The core application logic.                                                                                                              |
-| `js/method-draw.js`            | The main application controller. Initializes the editor, manages tools, and handles UI interactions.                                     |
+| `js/method-draw.js`            | The main application controller. Initializes the editor, manages tools, and handles UI interactions.      
+                               |
 | `js/canvas.js`                 | Manages the SVG canvas, element selection, transformations, and history (undo/redo).                                                     |
-| `js/svgedit.js`                | Core utilities from the SVG-Edit project. Provides low-level functions for SVG parsing, path manipulation, and browser compatibility.    |
+| `js/svgedit.js`                | A central file that aggregates core utilities from the original SVG-Edit project.                                                        |
+| `js/svgutils.js`               | Contains core functions for creating and manipulating SVG elements in a cross-browser manner.                                            |
+| `js/Rulers.js`                 | Manages the rulers, grid, and guides within the editor interface.                                                                        |
+| `js/math.js`                   | Mathematical utilities for vector operations, matrix multiplication, and geometric calculations.                                   |
+| `js/history.js`                | History management system implementing undo/redo functionality using the Command pattern.                                          |
+| `js/path.js`                   | Path manipulation utilities for parsing, converting, and editing SVG path data.                                                    |
+| `js/sanitize.js`               | Provides SVG sanitization to prevent XSS and remove non-standard or malicious content upon import.                                     |
+| `js/booleanPath.js`            | Boolean path operations (union, subtract, intersect, exclude) using polygon clipping algorithms.                                 |
+| `js/units.js`                  | Contains logic for parsing and converting between different SVG units (e.g., px, in, cm).                                                |
+| `js/dao.js`                    | Handles Data Access Object logic for saving the SVG to a string and preparing it for download.                                           |
+| `js/selectedChanged.js`        | Handles the logic that runs when the set of selected elements on the canvas changes.                                                     |
+| `js/svgtransformlist.js`        | Utilities for parsing and manipulating SVG transform lists.                                                                          |
+
+
 | `js/timeline.js`               | Manages the animation timeline, including keyframe creation, property interpolation, and playback logic.                                  |
 | `js/lib/`                      | Third-party JavaScript libraries like jQuery, jscolor, and the animation timeline library.                                               |
 | `js/lib/animation-timeline.js` | The standalone library used to render and manage the interactive timeline UI.                                                            |
+| `js/lib/filesaver.js`          | A client-side library for saving files, enabling the "Save" functionality.                                                               |
+| `js/lib/canvg.js`              | A JavaScript SVG parser and renderer. Used for converting SVG to a canvas element, often for export purposes.                            |
+| `js/lib/jpicker.min.js`        | A color picker library used in the UI for selecting fill and stroke colors.                                                              |
+| `js/lib/mousewheel.js`         | A jQuery plugin for handling mouse wheel events, used for zooming the canvas.                                                            |
 | `locale/`                      | Language files for internationalization (i18n).                                                                                          |
 | `test/`                        | QUnit tests for various parts of the application, especially for boolean path operations.                                                |
 | `ANIMATION-TIMELINE-PLAN.md`   | A detailed technical plan for refactoring the animation timeline from a CSS-based to a JavaScript-based system.                          |
@@ -143,7 +170,7 @@ Below is a summary of the important files and directories within the `src` direc
 
 ### 4.3. `js/svgedit.js` - SVG-Edit Core Utilities
 
-- **Summary:** This is the foundational library inherited from SVG-Edit. It's a rich collection of stateless utility functions that handle the "hard parts" of SVG manipulation, such as path mathematics, matrix transformations, and browser compatibility quirks. It has no knowledge of the application's UI state.
+- **Summary:** This is a conceptual grouping of several foundational utility files inherited from SVG-Edit (e.g., `svgutils.js`, `math.js`, `path.js`). It's a rich collection of stateless utility functions that handle the "hard parts" of SVG manipulation, such as path mathematics, matrix transformations, and browser compatibility quirks. It has no knowledge of the application's UI state.
 
 - **Responsibilities:**
   - Provides a namespace (`svgedit`) for a wide range of utility functions.
@@ -178,6 +205,10 @@ Below is a summary of the important files and directories within the `src` direc
   - Playback will be driven by a `requestAnimationFrame` loop, which calculates values in real-time and applies them directly to SVG element attributes.
   - This new model will allow for independent easing and timing for each property and support animating non-CSS properties like path data.
   - **Benefit:** This provides smoother animations, greater control, and is significantly more extensible and performant.
+
+- **User Experience Requirements for Refactor:**
+  - **Default Duration:** When an element is first added to the timeline, it must be given a default visible duration (e.g., 2 seconds), represented by a bar on the main row. This provides immediate visual feedback and a tangible range to work within.
+  - **Dynamic Property Tracks:** To maintain a clean interface, the timeline should not show all animatable properties by default. Instead, when a user modifies a property (e.g., rotation, fill color) of an element on the canvas, a new sub-row for that specific property should dynamically appear under the element's main row. This "reveal on edit" behavior makes the tool more intuitive and less cluttered.
 
 ---
 
@@ -343,15 +374,33 @@ This section provides a focused summary of every key CSS and JavaScript file in 
 | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `js/method-draw.js`            | **Main Application Controller.** The central nervous system of the UI. It initializes the editor, handles UI events, and mediates between the user and the canvas.                                                                  |
 | `js/canvas.js`                 | **SVG Canvas Manager.** Provides the high-level API for all drawing operations, managing element selection, transformations, and the undo/redo history.                                                                             |
-| `js/svgedit.js`                | **Core SVG Utilities.** A foundational library from SVG-Edit with helper functions for complex SVG tasks like path math and matrix transformations.                                                                                 |
+| `js/svgedit.js`                | **SVG-Edit Core Aggregator.** A central file that aggregates and exposes core utilities inherited from the original SVG-Edit project, providing a unified `svgedit` namespace.                                                        |
+| `js/svgutils.js`               | **Core SVG Utilities.** Contains a rich set of low-level, cross-browser functions for creating, inspecting, and manipulating SVG elements and their attributes.                                                                    |
+| `js/Rulers.js`                 | **Rulers & Guides.** Manages the rulers, grid, and guides within the editor interface, providing visual alignment aids for the user.                                                                                                |
+| `js/history.js`                | **History Management.** Implements the undo/redo stack using the Command pattern, storing reversible actions as command objects.                                                                                         |
+| `js/path.js`                | **Path Operations.** Provides functions for parsing, converting, and manipulating SVG path data (`d` attributes), including conversion from shapes to paths.                                                              |
+| `js/sanitize.js`               | **SVG Sanitization.** Provides functions to sanitize SVG input upon import, removing potentially malicious content (like scripts) and ensuring the SVG data is safe and compliant.                                                    |
+| `js/booleanPath.js`                | **Boolean Path Operations.** Implements union, subtract, intersect, and exclude operations using polygon clipping algorithms (Martinez-Rueda) to calculate resulting path data.                                            |
+| `js/units.js`                  | **Unit Conversion.** Contains utilities for parsing and converting between various SVG units (px, in, cm, em, etc.), essential for correct sizing and positioning.                                                              |
+| `js/dao.js`                    | **Data Access Object.** Handles the logic for serializing the current SVG canvas content into a string and preparing it for download via `filesaver.js`.                                                                         |
+| `js/selectedChanged.js`        | **Selection Event Handler.** Contains the logic that is executed whenever the current selection of elements on the canvas changes, updating UI panels and context-sensitive tools.                                                   |
+| `js/svgtransformlist.js`                | **Transform List Utilities.** Provides functions for parsing and manipulating SVG transform lists, enabling complex transformation sequences to be applied to elements.                                                    |
+
 | `js/timeline.js`               | **Animation Logic Controller.** Manages the animation feature, controlling the timeline UI, keyframe creation, and playback logic.                                                                                                  |
 | `js/lib/animation-timeline.js` | **Timeline UI Library.** A third-party library that renders the interactive timeline UI.                                                                                                                                              |
+| `js/lib/filesaver.js`          | **File Saving Library.** A client-side library that enables saving files (like the generated SVG) directly from the browser, working in tandem with `js/dao.js`.                                                                    |
 | `js/lib/jquery.js`             | **DOM & Event Handling.** The core jQuery library, used extensively for DOM manipulation and event handling.                                                                                                                        |
 | `js/lib/jscolor.js`            | **Color Picker UI.** A third-party library that provides the color picker widget.                                                                                                                                                     |
-| `js/lib/pathseg.js`            | **SVGPathSeg Polyfill.** A polyfill for the now-removed native `SVGPathSeg` API, used for parsing and manipulating SVG path data (`d` attributes). This is crucial for path editing.                                                  |
-| `js/lib/jquery-svg.js`         | **jQuery SVG Plugin.** An extension for jQuery that provides helper functions for interacting with SVG elements, simplifying creation and attribute manipulation.                                                                    |
+| `js/lib/pathseg.js`            | **SVGPathSeg Polyfill.** A polyfill for the now-removed native `SVGPathSeg` API, used for parsing and manipulating SVG path data (`d` attributes). This is crucial for path editing.  
+                                                 |
 | `js/lib/jquery.hotkeys.js`     | **Keyboard Shortcut Helper.** A jQuery plugin that simplifies the process of binding keyboard shortcuts (hotkeys) for application actions like 'Save' (Cmd+S) or 'Undo' (Cmd+Z).                                                      |
 | `js/lib/jquery.bbq.js`         | **URL Hash/Fragment Manager.** A jQuery plugin for managing the browser's URL hash, enabling features like deep-linking or maintaining application state in the URL.                                                                  |
+| `js/lib/canvg.js`              | **SVG to Canvas Renderer.** A library that parses and renders SVG content onto an HTML5 canvas. This is primarily used for raster image export functionality (e.g., saving as PNG).                                                  |
+| `js/lib/rgbcolor.js`           | **Color Parsing Utility.** A utility for parsing various color string formats (hex, rgb, etc.) into a consistent object representation. It is a dependency for `canvg.js`.                                                          |
+| `js/lib/stackblur.js`          | **Blur Effect Library.** A library for applying fast blur effects to canvas elements, used by `canvg.js` to render SVG blur filters.                                                                                                |
+| `js/lib/jpicker.min.js`        | **Color Picker Widget.** A jQuery plugin that provides a more advanced color picker interface than the default, used for selecting fill and stroke colors.                                                                          |
+| `js/lib/jquery-ui-1.8.17.custom.min.js` | **jQuery UI Widgets.** A specific build of the jQuery UI library providing widgets like sliders and dialogs, used for various interactive UI components.                                                                      |
+| `js/lib/mousewheel.js`         | **Mouse Wheel Event Handler.** A jQuery plugin that normalizes `mousewheel` events across browsers, used to implement canvas zooming.                                                                                               |
 | `js/lib/touch.js`              | **Touch Event Normalizer.** A small utility to normalize touch and mouse events, providing a consistent API for handling user input across both touch-enabled and traditional devices.                                                |
 
 ### 9.3. Test-related JavaScript Files

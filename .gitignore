@@ -7,3 +7,4 @@ dist/*
 src/.kilocode/*
 .vscode/*
 src/.vscode/*
+docs/*.md

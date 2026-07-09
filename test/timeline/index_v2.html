@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Timeline example — Animation Object with linked child tracks</title>
+
+<style>
+  :root {
+    --z0:  #14161a;
+    --z1:  #191c21;
+    --z2:  #21252b;
+    --z3:  #2f343c;
+    --z9:  #9aa4b2;
+    --z12: #3a4048;
+    --z13: #454c56;
+    --z15: #eef1f5;
+    --accent7:  #3a7bd5;
+    --accent9:  #4b8ce8;
+    --accent14: rgba(58,123,213,0.35);
+    --b6:  #b5432e;
+    --b7:  #c94f38;
+    --x1: 4px; --x2: 6px; --x4: 10px; --x10: 40px; --x12: 48px;
+  }
+  html, body { margin:0; padding:0; height:100%; background: var(--z1); color: var(--z15);
+    font-family: Roboto, 'Helvetica Neue', Arial, sans-serif; }
+
+  #stage-panel {
+    height: 42%;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--z0);
+    border-bottom: 1px solid var(--z3);
+  }
+  #stage { width: 320px; height: 220px; overflow: visible; }
+
+  .transport {
+    display: flex; align-items: center; gap: 10px;
+    padding: 6px 10px; background: var(--z2); border-bottom: 1px solid var(--z3);
+    flex-shrink: 0;
+  }
+  .transport button {
+    background: var(--accent7); color: var(--z15); border: none; border-radius: 4px;
+    padding: 5px 12px; font-size: 12px; cursor: pointer;
+  }
+  .transport button:hover { background: var(--accent9); }
+  .transport .time-readout { font-size: 12px; color: var(--z9); font-variant-numeric: tabular-nums; }
+  .transport .spacer { flex: 1; }
+  .transport .legend { display:flex; gap:14px; font-size:11px; color: var(--z9); }
+  .transport .legend span { display:flex; align-items:center; gap:5px; }
+  .swatch { width:10px; height:10px; border-radius:2px; display:inline-block; }
+
+  .hint {
+    font-size: 11px; color: var(--z9); padding: 5px 10px;
+    background: var(--z2); border-bottom: 1px solid var(--z3); flex-shrink: 0;
+  }
+  .hint b { color: var(--z15); }
+
+  #timeline-panel { height: 58%; display: flex; flex-direction: column; }
+  .timeline-body { flex: 1; display: flex; overflow: hidden; min-height: 0; }
+
+  #outline {
+    width: 230px; flex-shrink: 0; background: var(--z2);
+    border-right: 1px solid var(--z3); overflow: hidden;
+  }
+  #outline .outline-spacer { box-sizing: border-box; }
+  .outline-row {
+    box-sizing: border-box;
+    display: flex; align-items: center;
+    font-size: 12px; color: var(--z15);
+    border-bottom: 1px solid var(--z3);
+    padding-left: 8px; padding-right: 4px;
+    user-select: none;
+  }
+  .outline-row.parent { cursor: pointer; font-weight: 600; background: var(--z1); }
+  .outline-row.parent:hover { background: var(--z3); }
+  .outline-row .toggle {
+    display:inline-block; width: 14px; transition: transform 120ms ease;
+    color: var(--accent9); cursor: pointer;
+  }
+  .outline-row.parent.collapsed .toggle { transform: rotate(-90deg); }
+  .outline-row.child { padding-left: 22px; color: var(--z9); font-size: 11px; }
+  .outline-row.child .elbow { color: var(--z3); margin-right: 5px; }
+  .outline-row .dot { width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; flex-shrink:0; }
+  .outline-row .row-title { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+
+  .row-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+  .icon-btn {
+    width: 18px; height: 18px; line-height: 18px; text-align: center;
+    font-size: 11px; border-radius: 3px; border: none; background: transparent;
+    color: var(--z9); cursor: pointer; padding: 0; flex-shrink: 0;
+  }
+  .icon-btn:hover { background: var(--z12); color: var(--z15); }
+  .icon-btn.del-btn:hover, .icon-btn.del-row-btn:hover { background: var(--b6); color: var(--z15); }
+  .icon-btn.lock-btn.is-locked { color: var(--b7); }
+  .outline-row.locked .add-btn, .outline-row.locked .del-btn, .outline-row.locked .del-row-btn, .outline-row.locked .row-ease-btn {
+    opacity: .3; pointer-events: none;
+  }
+
+  #timeline { flex: 1; position: relative; }
+
+  .floating-icon-btn {
+    position: fixed; display: none; align-items: center; justify-content: center;
+    width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--z3);
+    background: var(--accent7); color: var(--z15); font-size: 10px; cursor: pointer;
+    box-shadow: 0 2px 6px rgba(0,0,0,.4); z-index: 50; padding: 0;
+  }
+  .floating-icon-btn:hover { background: var(--accent9); }
+
+  /* Popover Layout */
+  .popover {
+    position: fixed; display: none; background: var(--z2); border: 1px solid var(--z3);
+    border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,.5); padding: 10px;
+    font-size: 11px; color: var(--z15); z-index: 100; width: 280px;
+  }
+  .popover-title {
+    font-weight: 600; font-size: 11px; color: var(--z9); text-transform: uppercase;
+    letter-spacing: .04em; margin-bottom: 8px; padding: 0 2px;
+  }
+  .property-list { display: flex; flex-direction: column; gap: 1px; max-height: 200px; overflow-y: auto; }
+  .property-item {
+    display: flex; align-items: center; gap: 7px; background: transparent; border: none;
+    color: var(--z15); text-align: left; padding: 5px 6px; border-radius: 4px;
+    font-size: 12px; cursor: pointer; width: 100%;
+  }
+  .property-item:hover { background: var(--z3); }
+  .property-item .dot { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
+
+  /* Custom Select List Dropdown with previews */
+  .custom-select-container {
+    position: relative; width: 100%; margin-bottom: 8px; user-select: none;
+  }
+  .custom-select-trigger {
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--z0); border: 1px solid var(--z3); border-radius: 4px;
+    padding: 6px 10px; cursor: pointer; color: var(--z15); font-size: 11px;
+  }
+  .custom-select-trigger:hover { border-color: var(--accent9); }
+  .custom-select-options {
+    position: absolute; top: 100%; left: 0; right: 0; background: var(--z2);
+    border: 1px solid var(--z3); border-radius: 4px; margin-top: 4px;
+    max-height: 190px; overflow-y: auto; display: none; z-index: 110;
+    box-shadow: 0 4px 12px rgba(0,0,0,.5);
+  }
+  .custom-select-options.open { display: block; }
+  .custom-option {
+    display: flex; align-items: center; gap: 8px; padding: 5px 8px; cursor: pointer;
+    border-bottom: 1px solid var(--z1);
+  }
+  .custom-option:hover { background: var(--z3); }
+  .custom-option.selected { background: var(--accent14); }
+  
+  .option-preview {
+    width: 28px; height: 28px; background: var(--z0);
+    border: 1px solid var(--z3); border-radius: 3px; flex-shrink: 0;
+  }
+  .option-text { font-size: 11px; color: var(--z15); flex-grow: 1; }
+  
+  /* Live Motion Preview blocks inside the dropdown option lists */
+  .motion-preview-box {
+    width: 24px; height: 12px; background: var(--z0); border: 1px solid var(--z3);
+    border-radius: 2px; position: relative; overflow: hidden; flex-shrink: 0;
+  }
+  .motion-preview-dot {
+    width: 6px; height: 6px; background: var(--accent9); border-radius: 50%;
+    position: absolute; top: 3px; left: 0;
+  }
+
+  /* Big interactive vector curve view */
+  .curve-preview-wrap { margin-bottom: 8px; }
+  .curve-big { width: 100%; height: 140px; display: block; background: var(--z1); border: 1px solid var(--z3); border-radius: 4px; }
+  .curve-grid { stroke: var(--z3); stroke-width: 1; }
+  .curve-diagonal { stroke: var(--z3); stroke-width: 1; stroke-dasharray: 3,3; }
+  .curve-path { fill: none; stroke: var(--accent9); stroke-width: 2.2; }
+  .handle-line { stroke: var(--z9); stroke-width: 1; stroke-dasharray: 2,2; }
+  .handle { fill: var(--accent7); stroke: var(--z15); stroke-width: 1.5; cursor: grab; touch-action: none; }
+  .handle:hover { fill: var(--accent9); }
+  .handle.disabled { opacity: 0.15; cursor: not-allowed; pointer-events: none; }
+  .handle-line.disabled { opacity: 0.15; }
+  .bezier-readout { font-size: 10px; color: var(--z9); font-variant-numeric: tabular-nums; text-align: center; }
+</style>
+
+<link rel="stylesheet" href="animation-timeline.css">
+</head>
+<body>
+
+<div id="stage-panel">
+  <svg id="stage" viewBox="0 0 320 220">
+    <rect x="0" y="0" width="320" height="220" fill="var(--z0)"/>
+    <g id="obj-pivot" transform="translate(160,110)">
+      <rect id="half-left"  width="60" height="90"/>
+      <rect id="half-right" width="60" height="90"/>
+    </g>
+  </svg>
+</div>
+
+<div id="timeline-panel">
+  <div class="transport">
+    <button id="btn-play">▶ Play</button>
+    <button id="btn-reset">⏮ Reset</button>
+    <div class="time-readout"><span id="time-readout">0</span> ms</div>
+    <div class="spacer"></div>
+    <div class="legend">
+      <span><i class="swatch" style="background:#c0392b"></i>colour</span>
+      <span><i class="swatch" style="background:#3a7bd5"></i>transition</span>
+      <span><i class="swatch" style="background:#e8b33a"></i>rotation</span>
+    </div>
+  </div>
+  <div class="hint">
+    Select any child track keyframe and use the floating <b>✎</b> button, or use the <b>∿</b> icon in the track sidebar row actions.
+  </div>
+  <div class="timeline-body">
+    <div id="outline"></div>
+    <div id="timeline"></div>
+  </div>
+</div>
+
+<button id="easing-edit-btn" class="floating-icon-btn" title="Set animation curve" type="button">✎</button>
+<div id="property-popover" class="popover"></div>
+<div id="easing-popover" class="popover"></div>
+
+<script src="jquery-3_5_1_min.js"></script>
+<script src="animation-timeline.js"></script>
+<script>
+var TIMELINE_MAX = 3000;
+var HEADER_HEIGHT = 40;
+var LEFT_MARGIN = 25;
+
+var parentGroupMarker = { id: 'object-span' };
+var objectDeleted = false;
+
+var objectRow = {
+  title: 'Animation Object', id: 'row-object', locked: false,
+  style: { height: 34, fillColor: '#1d2b3f' },
+  keyframes: [{ val: 0, group: parentGroupMarker }, { val: 2000, group: parentGroupMarker }]
+};
+
+var colourRow = {
+  title: 'Colour', id: 'row-colour', propKey: 'colourFill', locked: false,
+  style: { height: 26, fillColor: '#2a1f1c' },
+  keyframes: [{ val: 0, easing: 'linear' }, { val: 2000, easing: 'linear' }]
+};
+
+var transitionRow = {
+  title: 'Transition', id: 'row-transition', propKey: 'transform', locked: false,
+  style: { height: 26, fillColor: '#1b2430' },
+  keyframes: [{ val: 1000, easing: 'easeOutBounce' }, { val: 2000, easing: 'linear' }]
+};
+
+var rotationRow = {
+  title: 'Rotation', id: 'row-rotation', propKey: 'rotation', locked: false,
+  style: { height: 26, fillColor: '#2b2716' },
+  keyframes: [{ val: 0, easing: 'ease' }, { val: 1000, easing: 'linear' }]
+};
+
+var childRows = [colourRow, transitionRow, rotationRow];
+var expanded = true;
+
+var PROPERTY_DEFS = {
+  colourFill:  { label: 'Colour',       kind: 'color',  swatch: '#c0392b', from: '#c0392b', to: '#2ea83a' },
+  transform:   { label: 'Transition',   kind: 'number', swatch: '#3a7bd5', from: 0,    to: 40 },
+  rotation:    { label: 'Rotation',     kind: 'number', swatch: '#e8b33a', from: 0,    to: 180 }
+};
+
+var PRESET_BEZIERS = {
+  "linear": [0.00, 0.00, 1.00, 1.00],
+  "ease": [0.25, 0.10, 0.25, 1.00],
+  "ease-in": [0.42, 0.00, 1.00, 1.00],
+  "ease-out": [0.00, 0.00, 0.58, 1.00],
+  "ease-in-out": [0.42, 0.00, 0.58, 1.00],
+  "easeInSine": [0.12, 0.00, 0.39, 0.00],
+  "easeOutSine": [0.61, 1.00, 0.88, 1.00],
+  "easeInOutSine": [0.37, 0.00, 0.63, 1.00],
+  "easeInQuad": [0.11, 0.00, 0.50, 0.00],
+  "easeOutQuad": [0.50, 1.00, 0.89, 1.00],
+  "easeInOutQuad": [0.45, 0.00, 0.55, 1.00],
+  "easeInCubic": [0.32, 0.00, 0.67, 0.00],
+  "easeOutCubic": [0.33, 1.00, 0.67, 1.00],
+  "easeInOutCubic": [0.65, 0.00, 0.35, 1.00],
+  "easeInBack": [0.36, 0.00, 0.66, -0.56],
+  "easeOutBack": [0.34, 1.56, 0.64, 1.00],
+  "easeInOutBack": [0.68, -0.60, 0.32, 1.60],
+  "easeInBounce": "special",
+  "easeOutBounce": "special",
+  "easeInOutBounce": "special"
+};
+
+// --- Complete Piecewise Mathematical Bounce Evaluators ---
+function easeOutBounceFn(x) {
+  var n1 = 7.5625;
+  var d1 = 2.75;
+  if (x < 1 / d1) { return n1 * x * x; } 
+  else if (x < 2 / d1) { return n1 * (x -= 1.5 / d1) * x + 0.75; } 
+  else if (x < 2.5 / d1) { return n1 * (x -= 2.25 / d1) * x + 0.9375; } 
+  else { return n1 * (x -= 2.625 / d1) * x + 0.984375; }
+}
+function easeInBounceFn(x) { return 1 - easeOutBounceFn(1 - x); }
+function easeInOutBounceFn(x) {
+  return x < 0.5 ? (1 - easeOutBounceFn(1 - 2 * x)) / 2 : (1 + easeOutBounceFn(2 * x - 1)) / 2;
+}
+
+function cubicBezierEasing(x1, y1, x2, y2) {
+  function a(p1, p2) { return 1 - 3 * p2 + 3 * p1; }
+  function b(p1, p2) { return 3 * p2 - 6 * p1; }
+  function c(p1) { return 3 * p1; }
+  function calcX(t) { return ((a(x1, x2) * t + b(x1, x2)) * t + c(x1)) * t; }
+  function calcY(t) { return ((a(y1, y2) * t + b(y1, y2)) * t + c(y1)) * t; }
+  function calcDerivX(t) { return 3 * a(x1, x2) * t * t + 2 * b(x1, x2) * t + c(x1); }
+  return function (x) {
+    if (x === 0 || x === 1) return x;
+    var t = x;
+    for (var i = 0; i < 8; i++) {
+      var d = calcDerivX(t);
+      if (Math.abs(d) < 1e-6) break;
+      t -= (calcX(t) - x) / d;
+    }
+    return calcY(t);
+  };
+}
+
+function getEasingFn(key) {
+  if (!key) return cubicBezierEasing(0,0,1,1);
+  if (key === "easeOutBounce") return easeOutBounceFn;
+  if (key === "easeInBounce") return easeInBounceFn;
+  if (key === "easeInOutBounce") return easeInOutBounceFn;
+  if (PRESET_BEZIERS[key] && PRESET_BEZIERS[key] !== "special") {
+    var p = PRESET_BEZIERS[key];
+    return cubicBezierEasing(p[0], p[1], p[2], p[3]);
+  }
+  if (key.indexOf('custom:') === 0) {
+    var parts = key.slice(7).split(',').map(Number);
+    return cubicBezierEasing(parts[0], parts[1], parts[2], parts[3]);
+  }
+  return cubicBezierEasing(0,0,1,1);
+}
+
+function parseBezierString(key) {
+  if (key && PRESET_BEZIERS[key] && PRESET_BEZIERS[key] !== "special") return [...PRESET_BEZIERS[key]];
+  if (key && key.indexOf('custom:') === 0) {
+    var parts = key.slice(7).split(',').map(Number);
+    if (parts.length === 4) return parts;
+  }
+  return [0.25, 0.1, 0.25, 1.0]; // fallback
+}
+
+function matchingPresetName(x1, y1, x2, y2, currentKey) {
+  if (currentKey === "easeInBounce" || currentKey === "easeOutBounce" || currentKey === "easeInOutBounce") {
+    return currentKey;
+  }
+  for (var name in PRESET_BEZIERS) {
+    var p = PRESET_BEZIERS[name];
+    if (p !== "special" && Math.abs(p[0]-x1) < 0.01 && Math.abs(p[1]-y1) < 0.01 && Math.abs(p[2]-x2) < 0.01 && Math.abs(p[3]-y2) < 0.01) {
+      return name;
+    }
+  }
+  return 'Custom Curve';
+}
+
+// --- Initialize Library Timeline Engine ---
+var timeline = new timelineModule.Timeline();
+
+function visibleRows() {
+  if (objectDeleted) return [];
+  return [objectRow].concat(expanded ? childRows : []);
+}
+
+function currentModel() {
+  childRows.forEach(function (row) {
+    row.style = row.style || {};
+    row.style.keyframesStyle = { shape: timelineModule.TimelineKeyframeShape.None };
+  });
+  return { rows: visibleRows() };
+}
+
+function computeRowLayout() {
+  var y = HEADER_HEIGHT;
+  return visibleRows().map(function (row) {
+    var h = row.style.height;
+    var entry = { row: row, top: y, height: h, center: y + h / 2 };
+    y += h;
+    return entry;
+  });
+}
+
+timeline.initialize({
+  id: 'timeline',
+  headerHeight: HEADER_HEIGHT,
+  leftMargin: LEFT_MARGIN,
+  keyframesDraggable: true,
+  groupsDraggable: true,
+  timelineDraggable: true
+}, currentModel());
+timeline.setOptions({ min: 0, max: TIMELINE_MAX, totalTime: TIMELINE_MAX, leftMargin: LEFT_MARGIN });
+
+function refreshAll() {
+  timeline.setModel(currentModel());
+  timeline.redraw();
+  renderOutline();
+  renderKeyframeOverlay();
+  applyTime(timeline.getTime());
+}
+
+// --- Render Sidebar Actions Layout ---
+var outlineEl = document.getElementById('outline');
+var propPopover = document.getElementById('property-popover');
+
+function renderOutline() {
+  if (objectDeleted) { outlineEl.innerHTML = ''; return; }
+  
+  var html = '<div class="outline-spacer" style="height:' + HEADER_HEIGHT + 'px"></div>';
+  html += '<div class="outline-row parent' + (expanded ? '' : ' collapsed') + (objectRow.locked ? ' locked' : '') + '" style="height:' + objectRow.style.height + 'px">'
+        + '<span class="toggle" data-action="toggle">▾</span>'
+        + '<span class="dot" style="background:#3a7bd5"></span>'
+        + '<span class="row-title" data-action="toggle">Animation Object</span>'
+        + '<span class="row-actions">'
+        +   '<button type="button" class="icon-btn lock-btn' + (objectRow.locked ? ' is-locked' : '') + '" data-action="lock-parent" title="Lock track"><svg viewBox="0 0 16 16" width="16" height="16"><path d="M4 14h8V9H4v5zM6 9V4.5a2.5 2.5 0 015 0V9" fill="currentColor"/></svg></button>'
+        +   '<button type="button" class="icon-btn add-btn" data-action="add-property" title="Add property track">＋</button>'
+        +   '<button type="button" class="icon-btn del-row-btn" data-action="delete-parent" title="Delete object">×</button>'
+        + '</span>'
+        + '</div>';
+
+  if (expanded) {
+    childRows.forEach(function (row, idx) {
+      var def = PROPERTY_DEFS[row.propKey] || { swatch: '#6b7280' };
+      html += '<div class="outline-row child' + (row.locked || objectRow.locked ? ' locked' : '') + '" style="height:' + row.style.height + 'px">'
+            + '<span class="elbow">└</span>'
+            + '<span class="dot" style="background:' + def.swatch + '"></span>'
+            + '<span class="row-title">' + row.title + '</span>'
+            + '<span class="row-actions">'
+            +   '<button type="button" class="icon-btn lock-btn' + (row.locked ? ' is-locked' : '') + '" data-action="lock-child" data-row-index="' + idx + '" title="Lock track"><svg viewBox="0 0 16 16" width="16" height="16"><path d="M4 14h8V9H4v5zM6 9V4.5a2.5 2.5 0 012.5 0" fill="currentColor"/></svg></button>'
+            +   '<button type="button" class="icon-btn row-ease-btn" data-action="row-ease" data-row-index="' + idx + '" title="Set curve">∿</button>'
+            +   '<button type="button" class="icon-btn del-btn" data-action="delete-child" data-row-index="' + idx + '" title="Delete track">×</button>'
+            + '</span>'
+            + '</div>';
+    });
+  }
+  outlineEl.innerHTML = html;
+
+  outlineEl.querySelectorAll('[data-action="toggle"]').forEach(function (el) {
+    el.addEventListener('click', function () { expanded = !expanded; refreshAll(); });
+  });
+
+  outlineEl.querySelector('[data-action="lock-parent"]').addEventListener('click', function (e) {
+    e.stopPropagation(); objectRow.locked = !objectRow.locked; refreshAll();
+  });
+
+  outlineEl.querySelector('[data-action="delete-parent"]').addEventListener('click', function (e) {
+    e.stopPropagation(); if (confirm("Delete the Animation Object?")) { objectDeleted = true; hideEasingUI(); refreshAll(); }
+  });
+
+  outlineEl.querySelector('[data-action="add-property"]').addEventListener('click', function (e) {
+    e.stopPropagation(); openPropertyPopover(this);
+  });
+
+  if (expanded) {
+    outlineEl.querySelectorAll('[data-action="lock-child"]').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var idx = parseInt(btn.getAttribute('data-row-index'), 10);
+        childRows[idx].locked = !childRows[idx].locked;
+        refreshAll();
+      });
+    });
+
+    outlineEl.querySelectorAll('[data-action="delete-child"]').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var idx = parseInt(btn.getAttribute('data-row-index'), 10);
+        childRows.splice(idx, 1);
+        hideEasingUI();
+        refreshAll();
+      });
+    });
+
+    outlineEl.querySelectorAll('[data-action="row-ease"]').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var row = childRows[parseInt(btn.getAttribute('data-row-index'), 10)];
+        if (!row || !row.keyframes.length || row.locked || objectRow.locked) return;
+        currentEasingTarget = { row: row, keyframe: row.keyframes[0] };
+        openEasingPopover(btn);
+      });
+    });
+  }
+}
+
+function openPropertyPopover(anchorEl) {
+  var existingKeys = childRows.map(function(r) { return r.propKey; });
+  var available = Object.keys(PROPERTY_DEFS).filter(function(k) { return existingKeys.indexOf(k) === -1; });
+  
+  if (!available.length) { alert("All tracks are already active."); return; }
+  
+  var html = '<div class="popover-title">Add Property Track</div><div class="property-list">';
+  available.forEach(function(key) {
+    var def = PROPERTY_DEFS[key];
+    html += '<button type="button" class="property-item" data-key="' + key + '">'
+          + '  <span class="dot" style="background:' + def.swatch + '"></span>'
+          + '  <span>' + def.label + '</span>'
+          + '</button>';
+  });
+  html += '</div>';
+  
+  propPopover.innerHTML = html;
+  positionPopoverNear(propPopover, anchorEl);
+  
+  propPopover.querySelectorAll('.property-item').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var key = this.getAttribute('data-key');
+      var def = PROPERTY_DEFS[key];
+      childRows.push({
+        title: def.label, id: 'row-' + key, propKey: key, locked: false,
+        style: { height: 26, fillColor: '#222' },
+        keyframes: [{ val: 0, easing: 'linear' }, { val: 2000, easing: 'linear' }]
+      });
+      propPopover.style.display = 'none';
+      refreshAll();
+    });
+  });
+}
+
+// --- Parent-Child Track Alignment & Locks ---
+var lastKnownStart = objectRow.keyframes[0].val;
+function syncChildrenToParent(evt) {
+  if (!evt || !evt.target || evt.target.row !== objectRow) return;
+  var isBlockMove = evt.target.type === timelineModule.TimelineElementType.Group;
+  var newStart = objectRow.keyframes[0].val;
+  var delta = newStart - lastKnownStart;
+  lastKnownStart = newStart;
+  if (!isBlockMove || !delta) return;
+  childRows.forEach(function (row) {
+    if (row.locked) return;
+    row.keyframes.forEach(function (kf) { kf.val += delta; });
+  });
+  timeline.setModel(currentModel());
+  timeline.redraw();
+  applyTime(timeline.getTime());
+}
+
+timeline.onDrag(function (evt) {
+  if (evt && evt.target && evt.target.row && (evt.target.row.locked || objectRow.locked)) {
+    evt.arguments.preventDefault = true;
+    return;
+  }
+  syncChildrenToParent(evt); renderKeyframeOverlay();
+});
+timeline.onDragFinished(function (evt) { syncChildrenToParent(evt); renderKeyframeOverlay(); });
+timeline.onScroll(function () { renderKeyframeOverlay(); repositionFloatingUI(); });
+timeline.onScrollFinished(function () { renderKeyframeOverlay(); repositionFloatingUI(); });
+
+var SVG_NS = 'http://www.w3.org/2000/svg';
+var overlaySvg = null;
+
+function ensureOverlay() {
+  if (overlaySvg) return overlaySvg;
+  overlaySvg = document.createElementNS(SVG_NS, 'svg');
+  overlaySvg.style.cssText = 'position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none;';
+  document.getElementById('timeline').appendChild(overlaySvg);
+  return overlaySvg;
+}
+
+function renderKeyframeOverlay() {
+  var svg = ensureOverlay();
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  if (objectDeleted) return;
+  
+  computeRowLayout().forEach(function (entry) {
+    var row = entry.row;
+    if (row === objectRow) return;
+    row.keyframes.forEach(function (kf) {
+      var x = Math.floor(timeline.valToPx(kf.val) - timeline.scrollLeft + LEFT_MARGIN);
+      var y = Math.floor(entry.center);
+      var selected = !!kf.selected;
+      
+      var el = document.createElementNS(SVG_NS, 'polygon');
+      var r = selected ? 6 : 4.5;
+      var points = x + ',' + (y-r) + ' ' + (x+r) + ',' + y + ' ' + x + ',' + (y+r) + ' ' + (x-r) + ',' + y;
+      el.setAttribute('points', points);
+      el.setAttribute('fill', selected ? '#ff4d4d' : '#ff9800');
+      el.setAttribute('stroke', '#000000');
+      el.setAttribute('stroke-width', '1');
+      svg.appendChild(el);
+    });
+  });
+}
+
+// --- Floating Curve UI Trigger controls ---
+var easingBtn = document.getElementById('easing-edit-btn');
+var easingPopover = document.getElementById('easing-popover');
+var currentEasingTarget = null; 
+
+function hideEasingUI() { easingBtn.style.display = 'none'; easingPopover.style.display = 'none'; currentEasingTarget = null; }
+
+function repositionFloatingUI() {
+  if (currentEasingTarget) positionEasingButton(currentEasingTarget.row, currentEasingTarget.keyframe);
+  if (easingPopover.style.display !== 'none' && currentEasingTarget) positionPopoverNear(easingPopover, easingBtn);
+}
+
+function positionEasingButton(row, kf) {
+  var layout = computeRowLayout().find(function (e) { return e.row === row; });
+  if (!layout || row.locked || objectRow.locked) { hideEasingUI(); return; }
+  var timelineRect = document.getElementById('timeline').getBoundingClientRect();
+  var x = timeline.valToPx(kf.val) - timeline.scrollLeft + LEFT_MARGIN;
+  easingBtn.style.left = Math.round(timelineRect.left + x + 7) + 'px';
+  easingBtn.style.top = Math.round(timelineRect.top + layout.center - 10) + 'px';
+  easingBtn.style.display = 'flex';
+}
+
+timeline.onSelected(function (evt) {
+  renderKeyframeOverlay();
+  var relevant = (evt.selected || []).map(function (kf) {
+    if (objectRow.keyframes.indexOf(kf) !== -1) return { keyframe: kf, row: objectRow };
+    for (var i = 0; i < childRows.length; i++) { if (childRows[i].keyframes.indexOf(kf) !== -1) return { keyframe: kf, row: childRows[i] }; }
+    return null;
+  }).filter(function (el) { return el && el.row !== objectRow && !el.row.locked && !objectRow.locked; });
+
+  if (relevant.length !== 1) { hideEasingUI(); return; }
+  currentEasingTarget = relevant[0];
+  positionEasingButton(currentEasingTarget.row, currentEasingTarget.keyframe);
+});
+
+easingBtn.addEventListener('click', function (e) { e.stopPropagation(); openEasingPopover(easingBtn); });
+
+// --- Custom dropdown options list playground logic ---
+var PAD = 15, W = 260, H = 140;
+var activeHandle = null;
+var coords = [0, 0, 1, 1];
+var motionRafId = null;
+
+function mapX(t) { return PAD + t * (W - PAD * 2); }
+function mapY(v) { return PAD + (1 - (v + 0.2) / 1.4) * (H - PAD * 2); }
+function unmapX(px) { return (px - PAD) / (W - PAD * 2); }
+function unmapY(py) { return ((1 - (py - PAD) / (H - PAD * 2)) * 1.4) - 0.2; }
+
+function openEasingPopover(anchor) {
+  if (motionRafId) cancelAnimationFrame(motionRafId);
+  var kf = currentEasingTarget.keyframe;
+  
+  var activeEasing = kf.easing || "linear";
+  var isBounce = (activeEasing === "easeInBounce" || activeEasing === "easeOutBounce" || activeEasing === "easeInOutBounce");
+  coords = isBounce ? [0,0,1,1] : parseBezierString(activeEasing);
+
+  var html = '<div class="popover-title">Select &amp; Customize Curve</div>'
+        + '<div class="custom-select-container">'
+        + '  <div class="custom-select-trigger" id="custom-sel-trigger"><span>Select Easing Preset</span><span>▼</span></div>'
+        + '  <div class="custom-select-options" id="custom-sel-options"></div>'
+        + '</div>'
+        + '<div class="curve-preview-wrap">'
+        + '  <svg class="curve-big" id="popover-svg">'
+        + '    <line x1="'+mapX(0)+'" y1="'+mapY(0)+'" x2="'+mapX(1)+'" y2="'+mapY(0)+'" class="curve-grid"/>'
+        + '    <line x1="'+mapX(0)+'" y1="'+mapY(1)+'" x2="'+mapX(1)+'" y2="'+mapY(1)+'" class="curve-grid"/>'
+        + '    <line x1="'+mapX(0)+'" y1="'+mapY(0)+'" x2="'+mapX(1)+'" y2="'+mapY(1)+'" class="curve-diagonal"/>'
+        + '    <line id="line-h1" class="handle-line" x1="'+mapX(0)+'" y1="'+mapY(0)+'" x2="0" y2="0"/>'
+        + '    <line id="line-h2" class="handle-line" x1="'+mapX(1)+'" y1="'+mapY(1)+'" x2="0" y2="0"/>'
+        + '    <path id="curve-path" class="curve-path" d=""/>'
+        + '    <circle id="h1" class="handle" r="6" cx="0" cy="0"/>'
+        + '    <circle id="h2" class="handle" r="6" cx="0" cy="0"/>'
+        + '  </svg>'
+        + '</div>'
+        + '<div class="bezier-readout" id="readout-label"></div>';
+
+  easingPopover.innerHTML = html;
+  var optionsDiv = document.getElementById('custom-sel-options');
+  
+  // Render full list item options programmatically
+  Object.keys(PRESET_BEZIERS).forEach(function(key) {
+    var isSelected = (activeEasing === key);
+    
+    var item = document.createElement('div');
+    item.className = 'custom-option' + (isSelected ? ' selected' : '');
+    item.setAttribute('data-value', key);
+    
+    var canvas = document.createElement('canvas');
+    canvas.className = 'option-preview';
+    canvas.width = 28; canvas.height = 28;
+    
+    var span = document.createElement('span');
+    span.className = 'option-text';
+    span.textContent = key;
+    
+    var motionBox = document.createElement('div');
+    motionBox.className = 'motion-preview-box';
+    var motionDot = document.createElement('div');
+    motionDot.className = 'motion-preview-dot';
+    motionBox.appendChild(motionDot);
+    
+    item.appendChild(canvas);
+    item.appendChild(span);
+    item.appendChild(motionBox);
+    optionsDiv.appendChild(item);
+    
+    // Draw static miniature thumbnail graph line
+    var ctx = canvas.getContext('2d');
+    ctx.strokeStyle = '#4b8ce8'; ctx.lineWidth = 1.8; ctx.beginPath();
+    var easeFn = getEasingFn(key);
+    for(var i = 0; i <= 28; i++) {
+      var t = i / 28; var cx = t * 28; var cy = 28 - (easeFn(t) * 28);
+      if(i === 0) ctx.moveTo(cx, cy); else ctx.lineTo(cx, cy);
+    }
+    ctx.stroke();
+  });
+
+  updateVisuals(activeEasing);
+  positionPopoverNear(easingPopover, anchor);
+  
+  var trigger = document.getElementById('custom-sel-trigger');
+  trigger.addEventListener('click', function(e) { 
+    e.stopPropagation(); 
+    optionsDiv.classList.toggle('open'); 
+  });
+  
+  optionsDiv.addEventListener('click', function(e) {
+    var option = e.target.closest('.custom-option');
+    if(!option) return;
+    
+    var presetKey = option.getAttribute('data-value');
+    kf.easing = presetKey;
+    
+    var bounceNow = (presetKey === "easeInBounce" || presetKey === "easeOutBounce" || presetKey === "easeInOutBounce");
+    coords = bounceNow ? [0,0,1,1] : [...PRESET_BEZIERS[presetKey]];
+    
+    optionsDiv.querySelectorAll('.custom-option').forEach(function(o) { o.classList.remove('selected'); });
+    option.classList.add('selected');
+    
+    updateVisuals(presetKey); 
+    refreshAll();
+    optionsDiv.classList.remove('open');
+  });
+
+  // Vector handle dragging controls listener
+  var svg = document.getElementById('popover-svg');
+  document.getElementById('h1').addEventListener('pointerdown', function(e) { 
+    if (kf.easing === "easeInBounce" || kf.easing === "easeOutBounce" || kf.easing === "easeInOutBounce") return;
+    e.preventDefault(); activeHandle = 1; 
+  });
+  document.getElementById('h2').addEventListener('pointerdown', function(e) { 
+    if (kf.easing === "easeInBounce" || kf.easing === "easeOutBounce" || kf.easing === "easeInOutBounce") return;
+    e.preventDefault(); activeHandle = 2; 
+  });
+  
+  window.addEventListener('pointermove', function(e) {
+    if(!activeHandle) return;
+    var rect = svg.getBoundingClientRect();
+    var nx = Math.max(0, Math.min(1, unmapX((e.clientX - rect.left) * (W / rect.width))));
+    var ny = Math.max(-0.2, Math.min(1.2, unmapY((e.clientY - rect.top) * (H / rect.height))));
+    
+    if(activeHandle === 1) { coords[0] = nx; coords[1] = ny; } else { coords[2] = nx; coords[3] = ny; }
+    
+    kf.easing = 'custom:' + coords[0].toFixed(2) + ',' + coords[1].toFixed(2) + ',' + coords[2].toFixed(2) + ',' + coords[3].toFixed(2);
+    
+    optionsDiv.querySelectorAll('.custom-option').forEach(function(o) { o.classList.remove('selected'); });
+    updateVisuals(kf.easing); 
+    renderKeyframeOverlay(); 
+    applyTime(timeline.getTime());
+  });
+  
+  window.addEventListener('pointerup', function() { activeHandle = null; });
+  
+  // Animate the live loops inline boxes
+  function stepMotion() {
+    if (!easingPopover.contains(optionsDiv)) return;
+    var time = (performance.now() % 1200) / 1200; 
+    optionsDiv.querySelectorAll('.custom-option').forEach(function(opt) {
+      var key = opt.getAttribute('data-value');
+      var easeFn = getEasingFn(key);
+      var dot = opt.querySelector('.motion-preview-dot');
+      if (dot) {
+        dot.style.left = (easeFn(time) * 16) + 'px';
+      }
+    });
+    motionRafId = requestAnimationFrame(stepMotion);
+  }
+  motionRafId = requestAnimationFrame(stepMotion);
+}
+
+function updateVisuals(activeEasing) {
+  var svg = document.getElementById('popover-svg');
+  if (!svg) return;
+  
+  var isBounce = (activeEasing === "easeInBounce" || activeEasing === "easeOutBounce" || activeEasing === "easeInOutBounce");
+  
+  var h1 = svg.querySelector('#h1');
+  var h2 = svg.querySelector('#h2');
+  var l1 = svg.querySelector('#line-h1');
+  var l2 = svg.querySelector('#line-h2');
+  
+  if (isBounce) {
+    h1.classList.add('disabled'); h2.classList.add('disabled');
+    l1.classList.add('disabled'); l2.classList.add('disabled');
+  } else {
+    h1.classList.remove('disabled'); h2.classList.remove('disabled');
+    l1.classList.remove('disabled'); l2.classList.remove('disabled');
+  }
+  
+  h1.setAttribute('cx', mapX(coords[0])); h1.setAttribute('cy', mapY(coords[1]));
+  h2.setAttribute('cx', mapX(coords[2])); h2.setAttribute('cy', mapY(coords[3]));
+  l1.setAttribute('x2', mapX(coords[0])); l1.setAttribute('y2', mapY(coords[1]));
+  l2.setAttribute('x2', mapX(coords[2])); l2.setAttribute('y2', mapY(coords[3]));
+  
+  var d = '';
+  var fn = getEasingFn(activeEasing);
+  for(var i = 0; i <= 50; i++) {
+    var t = i / 50; d += (i === 0 ? 'M ' : 'L ') + mapX(t).toFixed(1) + ' ' + mapY(fn(t)).toFixed(1) + ' ';
+  }
+  svg.querySelector('#curve-path').setAttribute('d', d);
+  
+  var name = matchingPresetName(coords[0], coords[1], coords[2], coords[3], activeEasing);
+  document.getElementById('custom-sel-trigger').querySelector('span').textContent = name;
+  
+  if (isBounce) {
+    document.getElementById('readout-label').textContent = name + ' formula (Gravity Simulation)';
+  } else {
+    document.getElementById('readout-label').textContent = 'cubic-bezier(' + coords[0].toFixed(2) + ', ' + coords[1].toFixed(2) + ', ' + coords[2].toFixed(2) + ', ' + coords[3].toFixed(2) + ')';
+  }
+}
+
+function positionPopoverNear(popover, anchorEl) {
+  var rect = $(anchorEl)[0].getBoundingClientRect();
+  popover.style.display = 'block';
+  var left = rect.right + 6;
+  if (left + popover.offsetWidth > window.innerWidth) left = rect.left - popover.offsetWidth - 6;
+  popover.style.left = Math.round(left) + 'px';
+  popover.style.top = Math.round(Math.min(rect.top, window.innerHeight - popover.offsetHeight - 8)) + 'px';
+}
+
+document.addEventListener('mousedown', function (e) {
+  var optionsDiv = document.getElementById('custom-sel-options');
+  if(optionsDiv && !document.getElementById('custom-sel-trigger').contains(e.target) && !optionsDiv.contains(e.target)){
+     optionsDiv.classList.remove('open');
+  }
+  if (easingPopover.style.display !== 'none' && !easingPopover.contains(e.target) && e.target !== easingBtn && !e.target.closest('.row-ease-btn')) {
+    hideEasingUI();
+    if(motionRafId) cancelAnimationFrame(motionRafId);
+  }
+  if (propPopover.style.display !== 'none' && !propPopover.contains(e.target) && !e.target.closest('[data-action="add-property"]')) {
+    propPopover.style.display = 'none';
+  }
+});
+
+// --- Output Live Preview Evaluation Driver ---
+function lerp(a, b, t) { return a + (b - a) * t; }
+function clamp01(t) { return Math.max(0, Math.min(1, t)); }
+function lerpColorHex(c0, c1, t) {
+  var a = parseInt(c0.replace('#', ''), 16), b = parseInt(c1.replace('#', ''), 16);
+  var r = Math.round(lerp((a >> 16) & 255, (b >> 16) & 255, t)), g = Math.round(lerp((a >> 8) & 255, (b >> 8) & 255, t)), bl = Math.round(lerp(a & 255, b & 255, t));
+  return 'rgb(' + r + ',' + g + ',' + bl + ')';
+}
+
+function valueAt(propKey, ms) {
+  var def = PROPERTY_DEFS[propKey];
+  var row = childRows.find(function (r) { return r.propKey === propKey; });
+  if (!row || row.keyframes.length < 2) return 0;
+  
+  var kfs = [...row.keyframes].sort(function(a,b){return a.val - b.val;});
+  if(ms <= kfs[0].val) return 0;
+  if(ms >= kfs[kfs.length-1].val) return 1;
+  
+  var k0 = kfs[0], k1 = kfs[1];
+  for(var i=0; i<kfs.length-1; i++){
+    if(ms >= kfs[i].val && ms <= kfs[i+1].val){
+      k0 = kfs[i]; k1 = kfs[i+1]; break;
+    }
+  }
+  var t = (k1.val === k0.val) ? 0 : clamp01((ms - k0.val) / (k1.val - k0.val));
+  return getEasingFn(k0.easing)(t);
+}
+
+var pivot = document.getElementById('obj-pivot'), halfLeft = document.getElementById('half-left'), halfRight = document.getElementById('half-right'), timeReadout = document.getElementById('time-readout');
+
+function applyTime(ms) {
+  if (objectDeleted) return;
+  ms = Math.max(0, Math.min(TIMELINE_MAX, ms));
+  var fillColour = valueAt('colourFill', ms), gap = valueAt('transform', ms), rot = valueAt('rotation', ms);
+  
+  [[halfLeft, -1], [halfRight, 1]].forEach(function (h) {
+    var el = h[0]; el.setAttribute('width', 60); el.setAttribute('height', 90);
+    el.setAttribute('x', h[1] < 0 ? -60 : 0); el.setAttribute('y', -45);
+    el.setAttribute('fill', lerpColorHex(PROPERTY_DEFS.colourFill.from, PROPERTY_DEFS.colourFill.to, fillColour));
+    el.setAttribute('transform', 'translate(' + (h[1] * gap) + ',0)');
+  });
+  pivot.setAttribute('transform', 'translate(160,110) rotate(' + (rot * 180) + ')');
+  timeReadout.textContent = Math.round(ms);
+}
+
+timeline.onTimeChanged(function (evt) { applyTime(evt.val); repositionFloatingUI(); });
+
+// --- Playback Controls ---
+var playing = false, rafId = null, startWallTime = 0, startTimelineTime = 0;
+function tick() {
+  if (objectDeleted) { stop(); return; }
+  var elapsed = performance.now() - startWallTime; var t = startTimelineTime + elapsed;
+  if (t >= objectRow.keyframes[1].val) { timeline.setTime(objectRow.keyframes[1].val); stop(); return; }
+  timeline.setTime(t); rafId = requestAnimationFrame(tick);
+}
+function play() {
+  if (playing || objectDeleted) return; playing = true; document.getElementById('btn-play').textContent = '⏸ Pause';
+  startWallTime = performance.now(); startTimelineTime = timeline.getTime();
+  if (startTimelineTime >= objectRow.keyframes[1].val) startTimelineTime = 0;
+  rafId = requestAnimationFrame(tick);
+}
+function stop() { playing = false; document.getElementById('btn-play').textContent = '▶ Play'; if (rafId) cancelAnimationFrame(rafId); }
+document.getElementById('btn-play').addEventListener('click', function () { if (playing) stop(); else play(); });
+document.getElementById('btn-reset').addEventListener('click', function () { stop(); timeline.setTime(0); });
+
+refreshAll();
+</script>
+</body>
+</html>

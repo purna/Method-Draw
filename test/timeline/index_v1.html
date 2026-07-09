@@ -1,0 +1,1315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Timeline example — Animation Object with linked child tracks</title>
+
+<!-- Theme variables that animation-timeline.css expects (normally supplied by base.css) -->
+<style>
+  :root {
+    --z0:  #14161a;
+    --z1:  #191c21;
+    --z2:  #21252b;
+    --z3:  #2f343c;
+    --z9:  #9aa4b2;
+    --z12: #3a4048;
+    --z13: #454c56;
+    --z15: #eef1f5;
+    --accent7:  #3a7bd5;
+    --accent9:  #4b8ce8;
+    --accent14: rgba(58,123,213,0.35);
+    --b6:  #b5432e;
+    --b7:  #c94f38;
+    --x1: 4px; --x2: 6px; --x4: 10px; --x10: 40px; --x12: 48px;
+  }
+  html, body { margin:0; padding:0; height:100%; background: var(--z1); color: var(--z15);
+    font-family: Roboto, 'Helvetica Neue', Arial, sans-serif; }
+
+  #stage-panel {
+    height: 42%;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--z0);
+    border-bottom: 1px solid var(--z3);
+  }
+  #stage { width: 320px; height: 220px; overflow: visible; }
+
+  .transport {
+    display: flex; align-items: center; gap: 10px;
+    padding: 6px 10px; background: var(--z2); border-bottom: 1px solid var(--z3);
+    flex-shrink: 0;
+  }
+  .transport button {
+    background: var(--accent7); color: var(--z15); border: none; border-radius: 4px;
+    padding: 5px 12px; font-size: 12px; cursor: pointer;
+  }
+  .transport button:hover { background: var(--accent9); }
+  .transport .time-readout { font-size: 12px; color: var(--z9); font-variant-numeric: tabular-nums; }
+  .transport .spacer { flex: 1; }
+  .transport .legend { display:flex; gap:14px; font-size:11px; color: var(--z9); }
+  .transport .legend span { display:flex; align-items:center; gap:5px; }
+  .swatch { width:10px; height:10px; border-radius:2px; display:inline-block; }
+
+  .hint {
+    font-size: 11px; color: var(--z9); padding: 5px 10px;
+    background: var(--z2); border-bottom: 1px solid var(--z3); flex-shrink: 0;
+  }
+  .hint b { color: var(--z15); }
+
+  #timeline-panel { height: 58%; display: flex; flex-direction: column; }
+  .timeline-body { flex: 1; display: flex; overflow: hidden; min-height: 0; }
+
+  /* Custom outline column — mirrors row heights in #timeline exactly,
+     so labels line up with the canvas-rendered keyframe rows. */
+  #outline {
+    width: 230px; flex-shrink: 0; background: var(--z2);
+    border-right: 1px solid var(--z3); overflow: hidden;
+  }
+  #outline .outline-spacer { box-sizing: border-box; }
+  .outline-row {
+    box-sizing: border-box;
+    display: flex; align-items: center;
+    font-size: 12px; color: var(--z15);
+    border-bottom: 1px solid var(--z3);
+    padding-left: 8px; padding-right: 4px;
+    user-select: none;
+  }
+  .outline-row.parent { cursor: pointer; font-weight: 600; background: var(--z1); }
+  .outline-row.parent:hover { background: var(--z3); }
+  .outline-row .toggle {
+    display:inline-block; width: 14px; transition: transform 120ms ease;
+    color: var(--accent9); cursor: pointer;
+  }
+  .outline-row.parent.collapsed .toggle { transform: rotate(-90deg); }
+  .outline-row.child { padding-left: 22px; color: var(--z9); font-size: 11px; }
+  .outline-row.child .elbow { color: var(--z3); margin-right: 5px; }
+  .outline-row .dot { width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; flex-shrink:0; }
+  .outline-row .row-title { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+  .outline-row.child .row-title { cursor: default; }
+
+  /* Row action icons (lock / add / delete) */
+  .row-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+  .icon-btn {
+    width: 18px; height: 18px; line-height: 18px; text-align: center;
+    font-size: 11px; border-radius: 3px; border: none; background: transparent;
+    color: var(--z9); cursor: pointer; padding: 0; flex-shrink: 0;
+  }
+  .icon-btn:hover { background: var(--z12); color: var(--z15); }
+  .icon-btn.del-btn:hover, .icon-btn.del-row-btn:hover { background: var(--b6); color: var(--z15); }
+  .icon-btn.lock-btn.is-locked { color: var(--b7); }
+  .outline-row.locked .add-btn, .outline-row.locked .del-btn, .outline-row.locked .del-row-btn, .outline-row.locked .row-ease-btn {
+    opacity: .3; pointer-events: none;
+  }
+  .icon-btn.row-ease-btn:disabled { opacity: .3; pointer-events: none; }
+  .outline-empty { padding: 16px 10px; font-size: 12px; color: var(--z9); line-height: 1.6; }
+  .text-btn {
+    margin-top: 6px; background: var(--accent7); color: var(--z15); border: none;
+    border-radius: 4px; padding: 4px 10px; font-size: 11px; cursor: pointer;
+  }
+  .text-btn:hover { background: var(--accent9); }
+
+  #timeline { flex: 1; position: relative; }
+
+  /* Floating "edit easing" pencil button that appears next to a single selected keyframe */
+  .floating-icon-btn {
+    position: fixed; display: none; align-items: center; justify-content: center;
+    width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--z3);
+    background: var(--accent7); color: var(--z15); font-size: 10px; cursor: pointer;
+    box-shadow: 0 2px 6px rgba(0,0,0,.4); z-index: 50; padding: 0;
+  }
+  .floating-icon-btn:hover { background: var(--accent9); }
+
+  /* Popovers (property picker + easing curve grid) */
+  .popover {
+    position: fixed; display: none; background: var(--z2); border: 1px solid var(--z3);
+    border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,.5); padding: 8px;
+    font-size: 11px; color: var(--z15); z-index: 100; max-width: 320px;
+  }
+  .popover-title {
+    font-weight: 600; font-size: 11px; color: var(--z9); text-transform: uppercase;
+    letter-spacing: .04em; margin-bottom: 6px; padding: 0 2px;
+  }
+  .popover-empty { color: var(--z9); padding: 4px 2px; }
+
+  .property-list { display: flex; flex-direction: column; gap: 1px; max-height: 260px; overflow-y: auto; }
+  .property-item {
+    display: flex; align-items: center; gap: 7px; background: transparent; border: none;
+    color: var(--z15); text-align: left; padding: 5px 6px; border-radius: 4px;
+    font-size: 12px; cursor: pointer; width: 100%;
+  }
+  .property-item:hover { background: var(--z3); }
+  .property-item .dot { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
+
+  .easing-row--top { display: flex; gap: 4px; margin-bottom: 6px; }
+  .easing-row--top .easing-btn { flex: 1; }
+  .easing-btn {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    background: var(--z1); border: 1px solid var(--z3); color: var(--z15);
+    border-radius: 4px; font-size: 10px; padding: 4px 6px; cursor: pointer;
+  }
+  .easing-btn:hover { border-color: var(--accent9); }
+  .easing-btn.active { background: var(--accent7); border-color: var(--accent9); }
+  .easing-btn-label { font-size: 9px; line-height: 1; white-space: nowrap; }
+  .mini-curve { display: block; color: var(--z15); pointer-events: none; }
+  table.easing-grid { border-collapse: collapse; }
+  table.easing-grid th { font-size: 9px; color: var(--z9); font-weight: 500; padding: 2px 3px; }
+  table.easing-grid td { padding: 1px 2px; }
+  .easing-btn.compact { width: 30px; padding: 3px 0; }
+
+  /* Tabs (Presets / Custom) */
+  .easing-tabs { display: flex; gap: 4px; margin-bottom: 6px; }
+  .easing-tab {
+    flex: 1; background: var(--z1); border: 1px solid var(--z3); color: var(--z9);
+    border-radius: 4px; font-size: 10px; padding: 4px 6px; cursor: pointer;
+  }
+  .easing-tab:hover { border-color: var(--accent9); color: var(--z15); }
+  .easing-tab.active { background: var(--accent7); border-color: var(--accent9); color: var(--z15); }
+
+  /* Big curve preview + draggable custom bezier editor */
+  .curve-preview-wrap { margin-bottom: 6px; }
+  .curve-big { width: 100%; height: auto; display: block; background: var(--z1); border: 1px solid var(--z3); border-radius: 4px; }
+  .curve-grid { stroke: var(--z3); stroke-width: 1; }
+  .curve-diagonal { stroke: var(--z3); stroke-width: 1; stroke-dasharray: 3,3; }
+  .curve-path { fill: none; stroke: var(--accent9); stroke-width: 2.2; }
+  .handle-line { stroke: var(--z9); stroke-width: 1; stroke-dasharray: 2,2; }
+  .handle { fill: var(--accent7); stroke: var(--z15); stroke-width: 1.5; cursor: grab; touch-action: none; }
+  .handle:hover { fill: var(--accent9); }
+  .bezier-editor { touch-action: none; }
+  .bezier-readout { font-size: 10px; color: var(--z9); margin-bottom: 6px; font-variant-numeric: tabular-nums; }
+  .bezier-inputs { display: flex; gap: 4px; margin-bottom: 2px; }
+  .bezier-inputs label { flex: 1; display: flex; flex-direction: column; font-size: 9px; color: var(--z9); gap: 2px; }
+  .bezier-inputs input {
+    width: 100%; box-sizing: border-box; background: var(--z0); color: var(--z15);
+    border: 1px solid var(--z3); border-radius: 3px; padding: 2px 3px; font-size: 10px;
+  }
+
+  /* Timeline separator */
+  .timeline-separator { width: 1px; background: var(--z3); height: 100%; }
+</style>
+
+<link rel="stylesheet" href="animation-timeline.css">
+</head>
+<body>
+
+<!-- Live preview driven purely by the timeline's current time -->
+<div id="stage-panel">
+  <svg id="stage" viewBox="0 0 320 220">
+    <rect x="0" y="0" width="320" height="220" fill="var(--z0)"/>
+    <!-- pivot group: rotation is applied here, around the object's centre -->
+    <g id="obj-pivot" transform="translate(160,110)">
+      <!-- the two halves that separate for the "divide in half" transition -->
+      <rect id="half-left"  width="60" height="90"/>
+      <rect id="half-right" width="60" height="90"/>
+    </g>
+  </svg>
+</div>
+
+<div id="timeline-panel">
+  <div class="transport">
+    <button id="btn-play">▶ Play</button>
+    <button id="btn-reset">⏮ Reset</button>
+    <div class="time-readout"><span id="time-readout">0</span> ms</div>
+    <div class="spacer"></div>
+    <div class="legend">
+      <span><i class="swatch" style="background:#c0392b"></i>colour</span>
+      <span><i class="swatch" style="background:#3a7bd5"></i>transition</span>
+      <span><i class="swatch" style="background:#e8b33a"></i>rotation</span>
+      <span><i class="swatch" style="background:#6b7280"></i>scale (empty)</span>
+    </div>
+  </div>
+  <div class="hint">
+    Click <b>▸ Animation Object</b> to show/hide its child tracks &nbsp;·&nbsp;
+    drag the <b>middle</b> of the object bar to move the whole thing (children move with it) &nbsp;·&nbsp;
+    drag an <b>end diamond</b> to resize just the parent's duration &nbsp;·&nbsp;
+    use <b>lock + −</b> on the object row to lock it, add a property track, or delete it &nbsp;·&nbsp;
+    select a keyframe and tap the <b>✎</b> that appears to pick its animation curve &nbsp;·&nbsp;
+    or tap a row's <b>∿</b> button to set its curve without selecting a keyframe first
+  </div>
+  <div class="timeline-body">
+    <div id="outline"></div>
+    <div id="timeline"></div>
+  </div>
+</div>
+
+<!-- Floating controls, appended to <body> so they can be positioned with fixed coordinates
+     regardless of scrolling/clipping inside the timeline panel. -->
+<button id="easing-edit-btn" class="floating-icon-btn" title="Set animation curve" type="button">✎</button>
+<div id="property-popover" class="popover"></div>
+<div id="easing-popover" class="popover"></div>
+
+<script src="jquery-3_5_1_min.js"></script>
+<script src="animation-timeline.js"></script>
+<script>
+/**
+ * ------------------------------------------------------------------
+ * One "Animation Object" parent row holding a start/end keyframe pair,
+ * plus a variable number of CHILD rows — each an independent property
+ * timeline attached to the same object. Four rows exist by default:
+ *
+ *   1. Colour     — keyframe @0ms     -> keyframe @2000ms  (red -> green)
+ *   2. Transition — keyframe @1000ms  -> keyframe @2000ms  (split in half)
+ *   3. Rotation   — keyframe @0ms     -> keyframe @1000ms  (0deg -> 180deg)
+ *   4. Scale      — placeholder track, no keyframes yet
+ *
+ * More property rows (fill opacity, skew, line thickness/opacity/colour,
+ * width, height...) can be added from the object row's "+" button, and
+ * every row can be removed again with its own "−" button. Each keyframe
+ * carries its own animation curve (easing), picked from the "✎" popover
+ * that appears once a single keyframe is selected, OR from the row's own
+ * "∿" button (which targets that row's first/controlling keyframe
+ * directly, no selection required). The shape drawn for a keyframe
+ * ( >  ease-in / <  ease-out / <>  easy ease / O  custom) reflects
+ * which of those curve families it uses.
+ *
+ * Parenting is expressed two ways:
+ *  - VISUALLY: the outline panel on the left nests the child rows under
+ *    "Animation Object" with a toggle arrow to show/hide them.
+ *  - FUNCTIONALLY: the object row's two keyframes share a `group`
+ *    marker, so animation-timeline-js renders/drags them as a single
+ *    bar. Dragging that bar (not its end diamonds) fires a "group"
+ *    drag — we listen for that and shift every child keyframe by the
+ *    same delta, so the children always move along with the parent.
+ *    Dragging an end diamond on its own just resizes the parent and
+ *    leaves the children where they are.
+  *  - Locking the object row (lock) disables dragging/resizing on the
+ *    parent AND every child row, and disables add/delete/curve editing
+ *    until it's unlocked again.
+ * ------------------------------------------------------------------
+ */
+
+var TIMELINE_MAX = 3000; // ms — ruler length, gives room to drag right
+var HEADER_HEIGHT = 40;
+var LEFT_MARGIN = 25;
+var ROW_MARGIN_BOTTOM = 0; // outline stacks rows with no gap; kept in sync with that layout
+
+// A shared reference used purely as a "same group" marker — the library
+// groups any keyframes on a row whose `.group` points at the same object.
+var parentGroupMarker = { id: 'object-span' };
+
+var objectRow = {
+  title: 'Animation Object',
+  id: 'row-object',
+  objectType: 'rect', // drives which properties are offered (e.g. "radius" only applies to circles)
+  locked: false,
+  style: { height: 34, fillColor: '#1d2b3f' },
+  keyframes: [
+    { val: 0,    group: parentGroupMarker },
+    { val: 2000, group: parentGroupMarker }
+  ]
+};
+
+var colourRow = {
+  title: 'Colour', id: 'row-colour', propKey: 'colourFill',
+  style: { height: 26, fillColor: '#2a1f1c' },
+  keyframes: [
+    { val: 0,    easing: 'linear' },   // start: red
+    { val: 2000, easing: 'linear' }    // end:   green
+  ]
+};
+
+var transitionRow = {
+  title: 'Transition', id: 'row-transition', propKey: 'transform',
+  style: { height: 26, fillColor: '#1b2430' },
+  keyframes: [
+    { val: 1000, easing: 'easeInOutQuad' }, // start: whole
+    { val: 2000, easing: 'linear' }         // end:   split in half
+  ]
+};
+
+var rotationRow = {
+  title: 'Rotation', id: 'row-rotation', propKey: 'rotation',
+  style: { height: 26, fillColor: '#2b2716' },
+  keyframes: [
+    { val: 0,    easing: 'easeOutBack' }, // start: 0deg (note the triangle keyframe shape)
+    { val: 1000, easing: 'linear' }       // end:   180deg
+  ]
+};
+
+var scaleRow = {
+  title: 'Scale', id: 'row-scale', propKey: 'scale',
+  style: { height: 26, fillColor: '#241c2b' },
+  keyframes: [] // deliberately empty — placeholder track, no keyframes yet
+};
+
+var childRows = [colourRow, transitionRow, rotationRow, scaleRow];
+var expanded = true;
+var objectDeleted = false;
+
+// ------------------------------------------------------------------
+// Property catalogue. Different object types expose different
+// properties (e.g. "radius" only makes sense for a circle) — filter
+// by `appliesTo` when offering the "+" add-property list.
+// ------------------------------------------------------------------
+var PROPERTY_DEFS = {
+  colourFill:    { label: 'Colour',         kind: 'color',  swatch: '#c0392b', from: '#c0392b', to: '#2ea83a' },
+  fillOpacity:   { label: 'Fill Opacity',   kind: 'number', swatch: '#b5432e', from: 1,    to: 0.25 },
+  transform:     { label: 'Transition',     kind: 'number', swatch: '#3a7bd5', from: 0,    to: 40 },
+  rotation:      { label: 'Rotation',       kind: 'number', swatch: '#e8b33a', from: 0,    to: 180 },
+  skew:          { label: 'Skew',           kind: 'number', swatch: '#9b59b6', from: 0,    to: 20 },
+  lineThickness: { label: 'Line Thickness', kind: 'number', swatch: '#5d6d7e', from: 0,    to: 4 },
+  lineOpacity:   { label: 'Line Opacity',   kind: 'number', swatch: '#7f8c9a', from: 0.15, to: 0.9 },
+  lineColour:    { label: 'Line Colour',    kind: 'color',  swatch: '#111318', from: '#000000', to: '#3a7bd5' },
+  width:         { label: 'Width',          kind: 'number', swatch: '#16a085', from: 120,  to: 180 },
+  height:        { label: 'Height',         kind: 'number', swatch: '#1abc9c', from: 90,   to: 60 },
+  radius:        { label: 'Radius',         kind: 'number', swatch: '#d35400', from: 0,    to: 20, appliesTo: ['circle'] },
+  scale:         { label: 'Scale',          kind: 'number', swatch: '#6b7280', from: 1,    to: 1 }
+};
+
+function availableProperties() {
+  return Object.keys(PROPERTY_DEFS).filter(function (key) {
+    if (childRows.some(function (r) { return r.propKey === key; })) return false;
+    var def = PROPERTY_DEFS[key];
+    if (def.appliesTo && def.appliesTo.indexOf(objectRow.objectType) === -1) return false;
+    return true;
+  });
+}
+
+// ------------------------------------------------------------------
+// Easing library — CSS-style keywords plus the full Sine/Quad/Cubic/
+// Quart/Quint/Expo/Circ/Back/Elastic/Bounce family in In/Out/InOut
+// variants (see https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Values/easing-function
+// and https://joshcollinsworth.com/demos/easing for reference curves).
+// ------------------------------------------------------------------
+function cubicBezierEasing(x1, y1, x2, y2) {
+  function a(p1, p2) { return 1 - 3 * p2 + 3 * p1; }
+  function b(p1, p2) { return 3 * p2 - 6 * p1; }
+  function c(p1) { return 3 * p1; }
+  function calcX(t) { return ((a(x1, x2) * t + b(x1, x2)) * t + c(x1)) * t; }
+  function calcY(t) { return ((a(y1, y2) * t + b(y1, y2)) * t + c(y1)) * t; }
+  function calcDerivX(t) { return 3 * a(x1, x2) * t * t + 2 * b(x1, x2) * t + c(x1); }
+  function tForX(x) {
+    var t = x;
+    for (var i = 0; i < 8; i++) {
+      var d = calcDerivX(t);
+      if (Math.abs(d) < 1e-6) break;
+      t -= (calcX(t) - x) / d;
+    }
+    return t;
+  }
+  return function (x) { return calcY(tForX(x)); };
+}
+
+var EASING_FAMILIES = ['Sine', 'Quad', 'Cubic', 'Quart', 'Quint', 'Expo', 'Circ', 'Back', 'Elastic', 'Bounce'];
+
+var EASINGS = {
+  linear: function (t) { return t; },
+  ease: cubicBezierEasing(0.25, 0.1, 0.25, 1.0),
+
+  easeInSine: function (t) { return 1 - Math.cos((t * Math.PI) / 2); },
+  easeOutSine: function (t) { return Math.sin((t * Math.PI) / 2); },
+  easeInOutSine: function (t) { return -(Math.cos(Math.PI * t) - 1) / 2; },
+
+  easeInQuad: function (t) { return t * t; },
+  easeOutQuad: function (t) { return 1 - (1 - t) * (1 - t); },
+  easeInOutQuad: function (t) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; },
+
+  easeInCubic: function (t) { return t * t * t; },
+  easeOutCubic: function (t) { return 1 - Math.pow(1 - t, 3); },
+  easeInOutCubic: function (t) { return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; },
+
+  easeInQuart: function (t) { return t * t * t * t; },
+  easeOutQuart: function (t) { return 1 - Math.pow(1 - t, 4); },
+  easeInOutQuart: function (t) { return t < 0.5 ? 8 * Math.pow(t, 4) : 1 - Math.pow(-2 * t + 2, 4) / 2; },
+
+  easeInQuint: function (t) { return Math.pow(t, 5); },
+  easeOutQuint: function (t) { return 1 - Math.pow(1 - t, 5); },
+  easeInOutQuint: function (t) { return t < 0.5 ? 16 * Math.pow(t, 5) : 1 - Math.pow(-2 * t + 2, 5) / 2; },
+
+  easeInExpo: function (t) { return t === 0 ? 0 : Math.pow(2, 10 * t - 10); },
+  easeOutExpo: function (t) { return t === 1 ? 1 : 1 - Math.pow(2, -10 * t); },
+  easeInOutExpo: function (t) {
+    if (t === 0) return 0;
+    if (t === 1) return 1;
+    return t < 0.5 ? Math.pow(2, 20 * t - 10) / 2 : (2 - Math.pow(2, -20 * t + 10)) / 2;
+  },
+
+  easeInCirc: function (t) { return 1 - Math.sqrt(1 - Math.pow(t, 2)); },
+  easeOutCirc: function (t) { return Math.sqrt(1 - Math.pow(t - 1, 2)); },
+  easeInOutCirc: function (t) {
+    return t < 0.5
+      ? (1 - Math.sqrt(1 - Math.pow(2 * t, 2))) / 2
+      : (Math.sqrt(1 - Math.pow(-2 * t + 2, 2)) + 1) / 2;
+  },
+
+  easeInBack: function (t) { var c1 = 1.70158, c3 = c1 + 1; return c3 * t * t * t - c1 * t * t; },
+  easeOutBack: function (t) {
+    var c1 = 1.70158, c3 = c1 + 1;
+    return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+  },
+  easeInOutBack: function (t) {
+    var c1 = 1.70158, c2 = c1 * 1.525;
+    return t < 0.5
+      ? (Math.pow(2 * t, 2) * ((c2 + 1) * 2 * t - c2)) / 2
+      : (Math.pow(2 * t - 2, 2) * ((c2 + 1) * (t * 2 - 2) + c2) + 2) / 2;
+  },
+
+  easeInElastic: function (t) {
+    var c4 = (2 * Math.PI) / 3;
+    return t === 0 ? 0 : t === 1 ? 1 : -Math.pow(2, 10 * t - 10) * Math.sin((t * 10 - 10.75) * c4);
+  },
+  easeOutElastic: function (t) {
+    var c4 = (2 * Math.PI) / 3;
+    return t === 0 ? 0 : t === 1 ? 1 : Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * c4) + 1;
+  },
+  easeInOutElastic: function (t) {
+    var c5 = (2 * Math.PI) / 4.5;
+    if (t === 0) return 0;
+    if (t === 1) return 1;
+    return t < 0.5
+      ? -(Math.pow(2, 20 * t - 10) * Math.sin((20 * t - 11.125) * c5)) / 2
+      : (Math.pow(2, -20 * t + 10) * Math.sin((20 * t - 11.125) * c5)) / 2 + 1;
+  },
+
+  easeOutBounce: function (t) {
+    var n1 = 7.5625, d1 = 2.75;
+    if (t < 1 / d1) return n1 * t * t;
+    if (t < 2 / d1) return n1 * (t -= 1.5 / d1) * t + 0.75;
+    if (t < 2.5 / d1) return n1 * (t -= 2.25 / d1) * t + 0.9375;
+    return n1 * (t -= 2.625 / d1) * t + 0.984375;
+  },
+  easeInBounce: function (t) { return 1 - EASINGS.easeOutBounce(1 - t); },
+  easeInOutBounce: function (t) {
+    return t < 0.5
+      ? (1 - EASINGS.easeOutBounce(1 - 2 * t)) / 2
+      : (1 + EASINGS.easeOutBounce(2 * t - 1)) / 2;
+  }
+};
+
+// Resolve an easing key to its actual function — presets come straight
+// from EASINGS, but a "custom:x1,y1,x2,y2" key (created by dragging the
+// bezier handles in the popover) builds its curve on the fly.
+function getEasingFn(key) {
+  if (!key) return EASINGS.linear;
+  if (EASINGS[key]) return EASINGS[key];
+  if (key.indexOf('custom:') === 0) {
+    var parts = key.slice(7).split(',').map(Number);
+    if (parts.length === 4 && parts.every(function (n) { return !isNaN(n); })) {
+      return cubicBezierEasing(parts[0], parts[1], parts[2], parts[3]);
+    }
+  }
+  return EASINGS.linear;
+}
+
+function parseCustomEasing(key) {
+  if (key && key.indexOf('custom:') === 0) {
+    var parts = key.slice(7).split(',').map(Number);
+    if (parts.length === 4 && parts.every(function (n) { return !isNaN(n); })) {
+      return { x1: parts[0], y1: parts[1], x2: parts[2], y2: parts[3] };
+    }
+  }
+  return { x1: 0.42, y1: 0, x2: 0.58, y2: 1 }; // sensible default control points
+}
+
+function customEasingKey(p) {
+  return 'custom:' + p.x1.toFixed(2) + ',' + p.y1.toFixed(2) + ',' + p.x2.toFixed(2) + ',' + p.y2.toFixed(2);
+}
+
+
+//   >   ease-in    — starts slow, rushes to the end
+//   <   ease-out   — starts fast, eases into the end
+//   <>  easy ease  — symmetric ease-in-and-out ("InOut" curves)
+//   O   custom     — linear / plain "ease" / anything else uncategorised
+function easingShapeCategory(key) {
+  if (!key || key === 'linear' || key === 'ease') return 'custom';
+  if (key.indexOf('InOut') !== -1) return 'easy-ease';
+  if (key.indexOf('easeIn') === 0) return 'ease-in';
+  if (key.indexOf('easeOut') === 0) return 'ease-out';
+  return 'custom';
+}
+
+// --- Initialise the real Timeline widget from animation-timeline.js ---
+var timeline = new timelineModule.Timeline();
+
+function visibleRows() {
+  return objectDeleted ? [] : [objectRow].concat(expanded ? childRows : []);
+}
+
+function currentModel() {
+  objectRow.groupsDraggable = !objectRow.locked;
+  objectRow.keyframesDraggable = !objectRow.locked;
+  childRows.forEach(function (row) {
+    row.keyframesDraggable = !objectRow.locked;
+    row.style = row.style || {};
+    // Hide the library's own diamond rendering for child keyframes — we
+    // draw our own triangle/circle glyphs on an overlay instead (see
+    // renderKeyframeOverlay), while the invisible native keyframe still
+    // owns the drag/selection hit-box at the same screen position.
+    row.style.keyframesStyle = { shape: timelineModule.TimelineKeyframeShape.None };
+  });
+  return { rows: visibleRows() };
+}
+
+function computeRowLayout() {
+  var y = HEADER_HEIGHT;
+  return visibleRows().map(function (row) {
+    var h = row.style.height;
+    var entry = { row: row, top: y, height: h, center: y + h / 2 };
+    y += h + ROW_MARGIN_BOTTOM;
+    return entry;
+  });
+}
+
+timeline.initialize({
+  id: 'timeline',
+  headerHeight: HEADER_HEIGHT,
+  leftMargin: LEFT_MARGIN,
+  keyframesDraggable: true,
+  groupsDraggable: true,
+  timelineDraggable: true
+}, currentModel());
+timeline.setOptions({ min: 0, max: TIMELINE_MAX, totalTime: TIMELINE_MAX, leftMargin: LEFT_MARGIN });
+
+// --- Outline sidebar: mirrors the visible rows 1:1, same heights ---
+var outlineEl = document.getElementById('outline');
+
+function refreshAll() {
+  timeline.setModel(currentModel());
+  timeline.redraw();
+  renderOutline();
+  renderKeyframeOverlay();
+  applyTime(timeline.getTime());
+}
+
+function renderOutline() {
+  var html = '<div class="outline-spacer" style="height:' + HEADER_HEIGHT + 'px"></div>';
+
+  if (objectDeleted) {
+    html += '<div class="outline-empty">No animation objects.<br>'
+          + '<button type="button" id="btn-restore" class="text-btn">Reload example</button></div>';
+    outlineEl.innerHTML = html;
+    document.getElementById('btn-restore').addEventListener('click', function () { location.reload(); });
+    return;
+  }
+
+  var locked = objectRow.locked;
+  html += '<div class="outline-row parent' + (expanded ? '' : ' collapsed') + (locked ? ' locked' : '') + '" style="height:' + objectRow.style.height + 'px">'
+        + '<span class="toggle" data-action="toggle">▾</span>'
+        + '<span class="dot" style="background:#3a7bd5"></span>'
+        + '<span class="row-title" data-action="toggle">Animation Object</span>'
+        + '<span class="row-actions">'
+        +   '<button type="button" class="icon-btn lock-btn' + (locked ? ' is-locked' : '') + '" data-action="lock" title="' + (locked ? 'Unlock object' : 'Lock object') + '"><svg viewBox="0 0 16 16" width="16" height="16"><path d="M4 14h8V9H4v5zM6 9V4.5a2.5 2.5 0 012.5 0" fill="currentColor"/></svg></button>'
+        +   '<button type="button" class="icon-btn add-btn" data-action="add" title="Add child animation">+</button>'
+        +   '<button type="button" class="icon-btn del-btn" data-action="delete-object" title="Delete object and all children">−</button>'
+        + '</span>'
+        + '</div>';
+
+  if (expanded) {
+    childRows.forEach(function (row, idx) {
+      var def = PROPERTY_DEFS[row.propKey] || { swatch: '#6b7280' };
+      html += '<div class="outline-row child' + (locked ? ' locked' : '') + '" style="height:' + row.style.height + 'px">'
+            + '<span class="elbow">└</span>'
+            + '<span class="dot" style="background:' + def.swatch + '"></span>'
+            + '<span class="row-title">' + row.title + '</span>'
+            + '<span class="row-actions">'
+            +   '<button type="button" class="icon-btn row-ease-btn" data-action="row-ease" data-row-index="' + idx + '" title="Set animation curve for this row"' + (row.keyframes.length ? '' : ' disabled') + '>\u223F</button>'
+            +   '<button type="button" class="icon-btn del-row-btn" data-action="delete-row" data-row-index="' + idx + '" title="Delete row">−</button>'
+            + '</span>'
+            + '</div>';
+    });
+  }
+
+  outlineEl.innerHTML = html;
+
+  outlineEl.querySelectorAll('[data-action="toggle"]').forEach(function (el) {
+    el.addEventListener('click', function () {
+      expanded = !expanded;
+      refreshAll();
+    });
+  });
+  var lockBtn = outlineEl.querySelector('[data-action="lock"]');
+  if (lockBtn) lockBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    objectRow.locked = !objectRow.locked;
+    if (objectRow.locked) hideEasingUI();
+    refreshAll();
+  });
+  var addBtn = outlineEl.querySelector('[data-action="add"]');
+  if (addBtn) addBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    if (objectRow.locked) return;
+    openPropertyPopover(addBtn);
+  });
+  var delBtn = outlineEl.querySelector('[data-action="delete-object"]');
+  if (delBtn) delBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    if (objectRow.locked) return;
+    deleteObject();
+  });
+  outlineEl.querySelectorAll('[data-action="delete-row"]').forEach(function (btn) {
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (objectRow.locked) return;
+      deleteChildRow(parseInt(btn.getAttribute('data-row-index'), 10));
+    });
+  });
+  outlineEl.querySelectorAll('[data-action="row-ease"]').forEach(function (btn) {
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (objectRow.locked) return;
+      var row = childRows[parseInt(btn.getAttribute('data-row-index'), 10)];
+      // The row's controlling keyframe is its first (earliest) one — that's
+      // the keyframe whose curve drives interpolation for the segment.
+      if (!row || !row.keyframes.length) return;
+      currentEasingTarget = { row: row, keyframe: row.keyframes[0] };
+      openEasingPopover(btn);
+    });
+  });
+}
+
+function addChildRow(propKey) {
+  var def = PROPERTY_DEFS[propKey];
+  if (!def) return;
+  childRows.push({
+    title: def.label,
+    id: 'row-' + propKey + '-' + Date.now(),
+    propKey: propKey,
+    style: { height: 26, fillColor: '#20242c' },
+    keyframes: [
+      { val: objectRow.keyframes[0].val, easing: 'linear' },
+      { val: objectRow.keyframes[1].val, easing: 'linear' }
+    ]
+  });
+  refreshAll();
+}
+
+function deleteChildRow(index) {
+  var removed = childRows[index];
+  childRows.splice(index, 1);
+  if (currentEasingTarget && currentEasingTarget.row === removed) hideEasingUI();
+  refreshAll();
+}
+
+function deleteObject() {
+  if (!window.confirm('Delete this animation object and all its child tracks? This cannot be undone.')) return;
+  objectDeleted = true;
+  hideEasingUI();
+  stop();
+  refreshAll();
+}
+
+// --- Parent -> children linkage ---
+// When the object row's own two keyframes are dragged as a GROUP (i.e.
+// the bar itself, not a single end diamond) they move by an identical
+// offset, and the children should follow by that same offset.
+//
+// Rather than trust the library's internal per-element drag bookkeeping
+// (startedVal/val on its temporary drag wrapper objects, and array
+// ordering of evt.elements — which isn't guaranteed to be stable), we
+// keep our OWN baseline of the parent's start time and diff against
+// that. It's updated after every event that touches the object row
+// (group move OR a solo end-diamond resize), so it can never go stale
+// or produce a wrong-signed delta on a later drag.
+var lastKnownStart = objectRow.keyframes[0].val;
+
+function syncChildrenToParent(evt) {
+  if (!evt || !evt.target || evt.target.row !== objectRow) return;
+
+  var isBlockMove = evt.target.type === timelineModule.TimelineElementType.Group;
+  var newStart = objectRow.keyframes[0].val;
+  var delta = newStart - lastKnownStart;
+  lastKnownStart = newStart; // always resync, even on a plain resize
+
+  if (!isBlockMove || !delta) return; // resizing one edge alone leaves children in place
+
+  childRows.forEach(function (row) {
+    row.keyframes.forEach(function (kf) { kf.val += delta; });
+  });
+
+  timeline.setModel(currentModel());
+  timeline.redraw();
+  applyTime(timeline.getTime());
+}
+
+// Wire both so children track the parent live while dragging, not just
+// once the mouse is released.
+timeline.onDrag(function (evt) { syncChildrenToParent(evt); renderKeyframeOverlay(); });
+timeline.onDragFinished(function (evt) { syncChildrenToParent(evt); renderKeyframeOverlay(); });
+timeline.onScroll(function () { renderKeyframeOverlay(); repositionFloatingUI(); });
+timeline.onScrollFinished(function () { renderKeyframeOverlay(); repositionFloatingUI(); });
+window.addEventListener('resize', function () { renderKeyframeOverlay(); repositionFloatingUI(); });
+
+// ------------------------------------------------------------------
+// Custom keyframe glyph overlay (triangle-right / triangle-left / circle)
+// ------------------------------------------------------------------
+var SVG_NS = 'http://www.w3.org/2000/svg';
+var overlaySvg = null;
+
+function ensureOverlay() {
+  if (overlaySvg) return overlaySvg;
+  overlaySvg = document.createElementNS(SVG_NS, 'svg');
+  overlaySvg.setAttribute('id', 'keyframe-overlay');
+  overlaySvg.style.position = 'absolute';
+  overlaySvg.style.top = '0';
+  overlaySvg.style.left = '0';
+  overlaySvg.style.width = '100%';
+  overlaySvg.style.height = '100%';
+  overlaySvg.style.pointerEvents = 'none';
+  document.getElementById('timeline').appendChild(overlaySvg);
+  return overlaySvg;
+}
+
+function renderKeyframeOverlay() {
+  var svg = ensureOverlay();
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  if (objectDeleted) return;
+
+  computeRowLayout().forEach(function (entry) {
+    var row = entry.row;
+    if (row === objectRow) return; // the parent bar keeps the library's own rendering
+    row.keyframes.forEach(function (kf) {
+      var x = Math.floor(timeline.valToPx(kf.val) - timeline.scrollLeft + LEFT_MARGIN);
+      var y = Math.floor(entry.center);
+      var category = easingShapeCategory(kf.easing);
+      var locked = objectRow.locked;
+      var selected = !!kf.selected;
+      var fillColor = locked ? '#666a72' : (selected ? 'red' : 'DarkOrange');
+      var el;
+      if (category === 'custom') {
+        // O — plain circle
+        el = document.createElementNS(SVG_NS, 'circle');
+        el.setAttribute('cx', x);
+        el.setAttribute('cy', y);
+        el.setAttribute('r', selected ? 5.5 : 4.5);
+      } else if (category === 'easy-ease') {
+        // <>  — a bowtie: two triangles whose tips meet at the keyframe's centre point
+        el = document.createElementNS(SVG_NS, 'path');
+        el.setAttribute('d',
+          'M ' + (x - 6) + ' ' + (y - 5) + ' L ' + x + ' ' + y + ' L ' + (x - 6) + ' ' + (y + 5) + ' Z ' +
+          'M ' + (x + 6) + ' ' + (y - 5) + ' L ' + x + ' ' + y + ' L ' + (x + 6) + ' ' + (y + 5) + ' Z');
+      } else {
+        // >  ease-in (tip points right, toward the finish)
+        // <  ease-out (tip points left, back toward the start)
+        el = document.createElementNS(SVG_NS, 'path');
+        var tipX = category === 'ease-in' ? x + 5.5 : x - 5.5;
+        var baseX = category === 'ease-in' ? x - 4 : x + 4;
+        el.setAttribute('d', 'M ' + tipX + ' ' + y + ' L ' + baseX + ' ' + (y - 5) + ' L ' + baseX + ' ' + (y + 5) + ' Z');
+      }
+      el.setAttribute('fill', fillColor);
+      el.setAttribute('stroke', 'black');
+      el.setAttribute('stroke-width', '0.6');
+      el.setAttribute('opacity', locked ? '0.55' : '1');
+      svg.appendChild(el);
+    });
+  });
+}
+
+// ------------------------------------------------------------------
+// Selection -> floating "✎" button -> easing curve popover
+// ------------------------------------------------------------------
+var easingBtn = document.getElementById('easing-edit-btn');
+var propertyPopover = document.getElementById('property-popover');
+var easingPopover = document.getElementById('easing-popover');
+var currentEasingTarget = null; // { row, keyframe }
+
+function hideEasingUI() {
+  easingBtn.style.display = 'none';
+  easingPopover.style.display = 'none';
+  currentEasingTarget = null;
+}
+
+function repositionFloatingUI() {
+  if (currentEasingTarget) positionEasingButton(currentEasingTarget.row, currentEasingTarget.keyframe);
+  if (easingPopover.style.display !== 'none' && currentEasingTarget) {
+    positionPopoverNear(easingPopover, easingBtn);
+  }
+}
+
+function positionEasingButton(row, kf) {
+  var layout = computeRowLayout().find(function (e) { return e.row === row; });
+  if (!layout) { hideEasingUI(); return; }
+  var timelineRect = document.getElementById('timeline').getBoundingClientRect();
+  var x = timeline.valToPx(kf.val) - timeline.scrollLeft + LEFT_MARGIN;
+  var y = layout.center;
+  easingBtn.style.left = Math.round(timelineRect.left + x + 7) + 'px';
+  easingBtn.style.top = Math.round(timelineRect.top + y - 17) + 'px';
+  easingBtn.style.display = 'flex';
+}
+
+// NOTE: evt.selected from the library is a bare array of keyframe
+// objects (not {row, keyframe} pairs), so we have to look up which row
+// each selected keyframe belongs to ourselves. This lookup is also what
+// lets the ✎ workflow keep working correctly once a row has more than
+// two keyframes on it — every keyframe is found by identity, not by
+// assuming it's index 0 or 1.
+function findRowForKeyframe(kf) {
+  if (objectRow.keyframes.indexOf(kf) !== -1) return objectRow;
+  for (var i = 0; i < childRows.length; i++) {
+    if (childRows[i].keyframes.indexOf(kf) !== -1) return childRows[i];
+  }
+  return null;
+}
+
+timeline.onSelected(function (evt) {
+  renderKeyframeOverlay();
+  var relevant = (evt.selected || [])
+    .map(function (kf) { return { keyframe: kf, row: findRowForKeyframe(kf) }; })
+    .filter(function (el) { return el.row && el.row !== objectRow; });
+  if (objectRow.locked || relevant.length !== 1) {
+    hideEasingUI();
+    return;
+  }
+  var sel = relevant[0];
+  currentEasingTarget = { row: sel.row, keyframe: sel.keyframe };
+  positionEasingButton(sel.row, sel.keyframe);
+});
+
+easingBtn.addEventListener('click', function (e) {
+  e.stopPropagation();
+  if (!currentEasingTarget) return;
+  openEasingPopover();
+});
+
+// ------------------------------------------------------------------
+// Visual curve picker: mini curve icons on every preset button, a big
+// live preview graph (updates on hover, like easingwizard.com), and a
+// "Custom" tab with draggable cubic-bezier handles you can tweak by
+// eye (like cubic-bezier.com / fwdtools' css easing generator).
+// ------------------------------------------------------------------
+var CURVE_W = 260, CURVE_H = 130, CURVE_PAD = 16;
+var BEZIER_YMIN = -0.5, BEZIER_YMAX = 1.5;
+var easingPopoverMode = 'presets'; // 'presets' | 'custom'
+var bezierParams = { x1: 0.42, y1: 0, x2: 0.58, y2: 1 };
+var currentPopoverAnchor = null;
+var bezierDragHandle = null; // '1' | '2' | null
+
+function curveSamplePath(fn, mapX, mapY, steps) {
+  steps = steps || 56;
+  var d = '';
+  for (var i = 0; i <= steps; i++) {
+    var t = i / steps;
+    d += (i === 0 ? 'M ' : 'L ') + mapX(t).toFixed(1) + ' ' + mapY(fn(t)).toFixed(1) + ' ';
+  }
+  return d;
+}
+
+// Small self-scaling sparkline used inside every preset button — each
+// icon is normalised to its own min/max so back/elastic/bounce curves
+// (which overshoot 0..1) still read clearly at a tiny size.
+function miniCurvePath(key, w, h) {
+  var fn = getEasingFn(key);
+  var pad = 2, steps = 14;
+  var vals = [], minV = 0, maxV = 1;
+  for (var i = 0; i <= steps; i++) {
+    var v = fn(i / steps);
+    vals.push(v);
+    if (v < minV) minV = v;
+    if (v > maxV) maxV = v;
+  }
+  var span = (maxV - minV) || 1;
+  var d = '';
+  for (var i = 0; i <= steps; i++) {
+    var x = pad + (i / steps) * (w - pad * 2);
+    var y = (h - pad) - ((vals[i] - minV) / span) * (h - pad * 2);
+    d += (i === 0 ? 'M ' : 'L ') + x.toFixed(1) + ' ' + y.toFixed(1) + ' ';
+  }
+  return '<svg viewBox="0 0 ' + w + ' ' + h + '" width="' + w + '" height="' + h + '" class="mini-curve">'
+       + '<path d="' + d + '" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>';
+}
+
+function easingLabel(key) {
+  if (key === 'linear') return 'Linear';
+  if (key === 'ease') return 'Ease';
+  var m = /^ease(InOut|In|Out)([A-Za-z]+)$/.exec(key || '');
+  if (m) return m[2] + ' ' + (m[1] === 'InOut' ? 'In-Out' : m[1]);
+  return key;
+}
+
+function easingButtonHtml(key, currentKey, compact) {
+  var cls = 'easing-btn' + (compact ? ' compact' : '') + (key === currentKey ? ' active' : '');
+  var w = compact ? 26 : 46, h = compact ? 16 : 22;
+  var label = easingLabel(key);
+  return '<button type="button" class="' + cls + '" data-easing="' + key + '" title="' + label + '">'
+       + miniCurvePath(key, w, h)
+       + (compact ? '' : '<span class="easing-btn-label">' + label + '</span>')
+       + '</button>';
+}
+
+// The big preview auto-scales to whatever curve it's showing, so
+// overshoot curves (back/elastic/bounce) are never clipped.
+function bigCurveMarkup(key) {
+  var fn = getEasingFn(key);
+  var steps = 56, vals = [], minV = 0, maxV = 1;
+  for (var i = 0; i <= steps; i++) {
+    var v = fn(i / steps);
+    vals.push(v);
+    if (v < minV) minV = v;
+    if (v > maxV) maxV = v;
+  }
+  var span = (maxV - minV) || 1;
+  function X(t) { return CURVE_PAD + t * (CURVE_W - CURVE_PAD * 2); }
+  function Y(v) { return (CURVE_H - CURVE_PAD) - ((v - minV) / span) * (CURVE_H - CURVE_PAD * 2); }
+  var d = '';
+  for (var i = 0; i <= steps; i++) { d += (i === 0 ? 'M ' : 'L ') + X(i / steps).toFixed(1) + ' ' + Y(vals[i]).toFixed(1) + ' '; }
+  return '<svg viewBox="0 0 ' + CURVE_W + ' ' + CURVE_H + '" class="curve-big">'
+       + '<line x1="' + X(0) + '" y1="' + Y(0) + '" x2="' + X(1) + '" y2="' + Y(0) + '" class="curve-grid"/>'
+       + '<line x1="' + X(0) + '" y1="' + Y(1) + '" x2="' + X(1) + '" y2="' + Y(1) + '" class="curve-grid"/>'
+       + '<line x1="' + X(0) + '" y1="' + Y(0) + '" x2="' + X(1) + '" y2="' + Y(1) + '" class="curve-diagonal"/>'
+       + '<path d="' + d + '" class="curve-path"/></svg>';
+}
+
+// Custom bezier editor — fixed axes (x: 0..1, y: -0.5..1.5) so dragging
+// feels consistent instead of the scale shifting under the cursor.
+function bezierX(t) { return CURVE_PAD + t * (CURVE_W - CURVE_PAD * 2); }
+function bezierY(v) { return CURVE_PAD + (1 - (v - BEZIER_YMIN) / (BEZIER_YMAX - BEZIER_YMIN)) * (CURVE_H - CURVE_PAD * 2); }
+
+function bezierEditorMarkup(p) {
+  var fn = cubicBezierEasing(p.x1, p.y1, p.x2, p.y2);
+  var d = curveSamplePath(fn, bezierX, bezierY);
+  var zeroY = bezierY(0), oneY = bezierY(1);
+  return '<svg viewBox="0 0 ' + CURVE_W + ' ' + CURVE_H + '" class="curve-big bezier-editor" id="bezier-editor-svg">'
+       + '<line x1="' + bezierX(0) + '" y1="' + zeroY + '" x2="' + bezierX(1) + '" y2="' + zeroY + '" class="curve-grid"/>'
+       + '<line x1="' + bezierX(0) + '" y1="' + oneY + '" x2="' + bezierX(1) + '" y2="' + oneY + '" class="curve-grid"/>'
+       + '<line x1="' + bezierX(0) + '" y1="' + zeroY + '" x2="' + bezierX(1) + '" y2="' + oneY + '" class="curve-diagonal"/>'
+       + '<line id="bez-handle-line-1" x1="' + bezierX(0) + '" y1="' + zeroY + '" x2="' + bezierX(p.x1) + '" y2="' + bezierY(p.y1) + '" class="handle-line"/>'
+       + '<line id="bez-handle-line-2" x1="' + bezierX(1) + '" y1="' + oneY + '" x2="' + bezierX(p.x2) + '" y2="' + bezierY(p.y2) + '" class="handle-line"/>'
+       + '<path id="bez-curve-path" d="' + d + '" class="curve-path"/>'
+       + '<circle id="bez-handle-1" cx="' + bezierX(p.x1) + '" cy="' + bezierY(p.y1) + '" r="6" class="handle" data-handle="1"/>'
+       + '<circle id="bez-handle-2" cx="' + bezierX(p.x2) + '" cy="' + bezierY(p.y2) + '" r="6" class="handle" data-handle="2"/>'
+       + '</svg>';
+}
+
+function bezierControlsHtml(p) {
+  return '<div class="bezier-readout">cubic-bezier(' + p.x1.toFixed(2) + ', ' + p.y1.toFixed(2) + ', ' + p.x2.toFixed(2) + ', ' + p.y2.toFixed(2) + ')</div>'
+       + '<div class="bezier-inputs">'
+       +   '<label>X1<input type="number" step="0.01" min="0" max="1" data-bez="x1" value="' + p.x1.toFixed(2) + '"></label>'
+       +   '<label>Y1<input type="number" step="0.01" data-bez="y1" value="' + p.y1.toFixed(2) + '"></label>'
+       +   '<label>X2<input type="number" step="0.01" min="0" max="1" data-bez="x2" value="' + p.x2.toFixed(2) + '"></label>'
+       +   '<label>Y2<input type="number" step="0.01" data-bez="y2" value="' + p.y2.toFixed(2) + '"></label>'
+       + '</div>';
+}
+
+function updateBezierEditorDom() {
+  var svg = document.getElementById('bezier-editor-svg');
+  if (!svg) return;
+  var p = bezierParams;
+  var fn = cubicBezierEasing(p.x1, p.y1, p.x2, p.y2);
+  svg.querySelector('#bez-curve-path').setAttribute('d', curveSamplePath(fn, bezierX, bezierY));
+  svg.querySelector('#bez-handle-1').setAttribute('cx', bezierX(p.x1));
+  svg.querySelector('#bez-handle-1').setAttribute('cy', bezierY(p.y1));
+  svg.querySelector('#bez-handle-2').setAttribute('cx', bezierX(p.x2));
+  svg.querySelector('#bez-handle-2').setAttribute('cy', bezierY(p.y2));
+  svg.querySelector('#bez-handle-line-1').setAttribute('x2', bezierX(p.x1));
+  svg.querySelector('#bez-handle-line-1').setAttribute('y2', bezierY(p.y1));
+  svg.querySelector('#bez-handle-line-2').setAttribute('x2', bezierX(p.x2));
+  svg.querySelector('#bez-handle-line-2').setAttribute('y2', bezierY(p.y2));
+  var readout = easingPopover.querySelector('.bezier-readout');
+  if (readout) readout.textContent = 'cubic-bezier(' + p.x1.toFixed(2) + ', ' + p.y1.toFixed(2) + ', ' + p.x2.toFixed(2) + ', ' + p.y2.toFixed(2) + ')';
+  ['x1', 'y1', 'x2', 'y2'].forEach(function (f) {
+    var input = easingPopover.querySelector('[data-bez="' + f + '"]');
+    if (input && document.activeElement !== input) input.value = p[f].toFixed(2);
+  });
+}
+
+function svgPointFromEvent(svg, evt) {
+  var rect = svg.getBoundingClientRect();
+  var px = (evt.clientX - rect.left) * (CURVE_W / rect.width);
+  var py = (evt.clientY - rect.top) * (CURVE_H / rect.height);
+  var t = (px - CURVE_PAD) / (CURVE_W - CURVE_PAD * 2);
+  var v = BEZIER_YMAX - ((py - CURVE_PAD) / (CURVE_H - CURVE_PAD * 2)) * (BEZIER_YMAX - BEZIER_YMIN);
+  return { t: Math.max(0, Math.min(1, t)), v: Math.max(BEZIER_YMIN, Math.min(BEZIER_YMAX, v)) };
+}
+
+function onBezierPointerMove(e) {
+  if (!bezierDragHandle || !currentEasingTarget) return;
+  var svg = document.getElementById('bezier-editor-svg');
+  if (!svg) return;
+  var pt = svgPointFromEvent(svg, e);
+  if (bezierDragHandle === '1') { bezierParams.x1 = pt.t; bezierParams.y1 = pt.v; }
+  else { bezierParams.x2 = pt.t; bezierParams.y2 = pt.v; }
+  currentEasingTarget.keyframe.easing = customEasingKey(bezierParams);
+  updateBezierEditorDom();
+  renderKeyframeOverlay();
+  applyTime(timeline.getTime());
+}
+function onBezierPointerUp() {
+  bezierDragHandle = null;
+  document.removeEventListener('pointermove', onBezierPointerMove);
+  document.removeEventListener('pointerup', onBezierPointerUp);
+}
+function wireBezierEditor() {
+  var svg = document.getElementById('bezier-editor-svg');
+  if (!svg) return;
+  ['1', '2'].forEach(function (n) {
+    var handle = svg.querySelector('#bez-handle-' + n);
+    handle.addEventListener('pointerdown', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      bezierDragHandle = n;
+      document.addEventListener('pointermove', onBezierPointerMove);
+      document.addEventListener('pointerup', onBezierPointerUp);
+    });
+  });
+}
+
+function wireEasingPopoverEvents() {
+  easingPopover.querySelectorAll('.easing-tab').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var tab = btn.getAttribute('data-tab');
+      if (tab === easingPopoverMode) return;
+      if (tab === 'custom') {
+        bezierParams = parseCustomEasing(currentEasingTarget.keyframe.easing);
+        currentEasingTarget.keyframe.easing = customEasingKey(bezierParams);
+        renderKeyframeOverlay();
+        applyTime(timeline.getTime());
+      }
+      easingPopoverMode = tab;
+      renderEasingPopoverBody();
+      positionPopoverNear(easingPopover, currentPopoverAnchor);
+    });
+  });
+
+  if (easingPopoverMode === 'presets') {
+    easingPopover.querySelectorAll('[data-easing]').forEach(function (btn) {
+      btn.addEventListener('mouseenter', function () {
+        var wrap = easingPopover.querySelector('.curve-preview-wrap');
+        if (wrap) wrap.innerHTML = bigCurveMarkup(btn.getAttribute('data-easing'));
+      });
+      btn.addEventListener('mouseleave', function () {
+        var wrap = easingPopover.querySelector('.curve-preview-wrap');
+        if (wrap && currentEasingTarget) wrap.innerHTML = bigCurveMarkup(currentEasingTarget.keyframe.easing || 'linear');
+      });
+      btn.addEventListener('click', function () {
+        if (!currentEasingTarget) return;
+        currentEasingTarget.keyframe.easing = btn.getAttribute('data-easing');
+        renderKeyframeOverlay();
+        applyTime(timeline.getTime());
+        easingPopover.style.display = 'none';
+      });
+    });
+  } else {
+    wireBezierEditor();
+    easingPopover.querySelectorAll('[data-bez]').forEach(function (input) {
+      input.addEventListener('input', function () {
+        var field = input.getAttribute('data-bez');
+        var val = parseFloat(input.value);
+        if (isNaN(val)) return;
+        if (field === 'x1' || field === 'x2') val = Math.max(0, Math.min(1, val));
+        bezierParams[field] = val;
+        currentEasingTarget.keyframe.easing = customEasingKey(bezierParams);
+        updateBezierEditorDom();
+        renderKeyframeOverlay();
+        applyTime(timeline.getTime());
+      });
+    });
+  }
+}
+
+function renderEasingPopoverBody() {
+  var currentKey = currentEasingTarget.keyframe.easing || 'linear';
+  var html = '<div class="popover-title">Animation Curve</div>';
+  html += '<div class="easing-tabs">'
+        + '<button type="button" class="easing-tab' + (easingPopoverMode === 'presets' ? ' active' : '') + '" data-tab="presets">Presets</button>'
+        + '<button type="button" class="easing-tab' + (easingPopoverMode === 'custom' ? ' active' : '') + '" data-tab="custom">Custom</button>'
+        + '</div>';
+
+  if (easingPopoverMode === 'custom') {
+    html += '<div class="curve-preview-wrap">' + bezierEditorMarkup(bezierParams) + '</div>';
+    html += bezierControlsHtml(bezierParams);
+  } else {
+    html += '<div class="curve-preview-wrap">' + bigCurveMarkup(currentKey) + '</div>';
+    html += '<div class="easing-row--top">' + easingButtonHtml('linear', currentKey) + easingButtonHtml('ease', currentKey) + '</div>';
+    html += '<table class="easing-grid"><thead><tr><th></th><th>In</th><th>Out</th><th>In-Out</th></tr></thead><tbody>';
+    EASING_FAMILIES.forEach(function (fam) {
+      html += '<tr><th>' + fam + '</th>';
+      ['In', 'Out', 'InOut'].forEach(function (variant) {
+        html += '<td>' + easingButtonHtml('ease' + variant + fam, currentKey, true) + '</td>';
+      });
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+  }
+
+  easingPopover.innerHTML = html;
+  wireEasingPopoverEvents();
+}
+
+function openEasingPopover(anchorEl) {
+  currentPopoverAnchor = anchorEl || easingBtn;
+  var currentKey = currentEasingTarget.keyframe.easing || 'linear';
+  easingPopoverMode = currentKey.indexOf('custom:') === 0 ? 'custom' : 'presets';
+  bezierParams = parseCustomEasing(currentKey);
+  renderEasingPopoverBody();
+  positionPopoverNear(easingPopover, currentPopoverAnchor);
+  easingPopover.style.display = 'block';
+}
+
+
+function openPropertyPopover(anchorBtn) {
+  var available = availableProperties();
+  var html = '<div class="popover-title">Add Child Animation</div>';
+  if (!available.length) {
+    html += '<div class="popover-empty">All available properties have been added.</div>';
+  } else {
+    html += '<div class="property-list">';
+    available.forEach(function (key) {
+      var def = PROPERTY_DEFS[key];
+      html += '<button type="button" class="property-item" data-prop="' + key + '">'
+            + '<span class="dot" style="background:' + def.swatch + '"></span>' + def.label + '</button>';
+    });
+    html += '</div>';
+  }
+  propertyPopover.innerHTML = html;
+  propertyPopover.querySelectorAll('[data-prop]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      addChildRow(btn.getAttribute('data-prop'));
+      propertyPopover.style.display = 'none';
+    });
+  });
+  positionPopoverNear(propertyPopover, anchorBtn);
+  propertyPopover.style.display = 'block';
+}
+
+function positionPopoverNear(popover, anchorEl) {
+  var rect = anchorEl.getBoundingClientRect();
+  popover.style.display = 'block'; // measure with real content first
+  var pw = popover.offsetWidth || 220;
+  var ph = popover.offsetHeight || 120;
+  var left = rect.right + 6;
+  if (left + pw > window.innerWidth - 8) left = rect.left - pw - 6;
+  if (left < 8) left = 8;
+  var top = rect.top;
+  if (top + ph > window.innerHeight - 8) top = window.innerHeight - ph - 8;
+  if (top < 8) top = 8;
+  popover.style.left = Math.round(left) + 'px';
+  popover.style.top = Math.round(top) + 'px';
+}
+
+document.addEventListener('click', function (e) {
+  if (propertyPopover.style.display !== 'none' && !propertyPopover.contains(e.target)) {
+    propertyPopover.style.display = 'none';
+  }
+  if (easingPopover.style.display !== 'none' && !easingPopover.contains(e.target) && e.target !== easingBtn && !e.target.closest('.row-ease-btn')) {
+    easingPopover.style.display = 'none';
+  }
+});
+
+renderOutline();
+renderKeyframeOverlay();
+
+// --- Helpers driving the live SVG preview from the current time ---
+function lerp(a, b, t) { return a + (b - a) * t; }
+function clamp01(t) { return Math.max(0, Math.min(1, t)); }
+
+function lerpColorHex(c0, c1, t) {
+  var a = parseInt(c0.replace('#', ''), 16);
+  var b = parseInt(c1.replace('#', ''), 16);
+  var ar = (a >> 16) & 255, ag = (a >> 8) & 255, ab = a & 255;
+  var br = (b >> 16) & 255, bg = (b >> 8) & 255, bb = b & 255;
+  var r = Math.round(lerp(ar, br, t)), g = Math.round(lerp(ag, bg, t)), bl = Math.round(lerp(ab, bb, t));
+  return 'rgb(' + r + ',' + g + ',' + bl + ')';
+}
+
+function findRow(propKey) {
+  return childRows.find(function (r) { return r.propKey === propKey; });
+}
+
+// Progress (0..1 input) run through that row's *starting* keyframe curve.
+// Overshoot from back/elastic curves is intentional and NOT clamped here.
+function easedProgress(row, ms) {
+  var k0 = row.keyframes[0], k1 = row.keyframes[1];
+  var t = (k1.val === k0.val) ? 0 : clamp01((ms - k0.val) / (k1.val - k0.val));
+  var fn = getEasingFn(k0.easing);
+  return fn(t);
+}
+
+function valueAt(propKey, ms) {
+  var def = PROPERTY_DEFS[propKey];
+  var row = findRow(propKey);
+  if (!row || row.keyframes.length < 2) return def.from;
+  var t = easedProgress(row, ms);
+  if (def.kind === 'color') return lerpColorHex(def.from, def.to, clamp01(t));
+  return lerp(def.from, def.to, t);
+}
+
+var pivot = document.getElementById('obj-pivot');
+var halfLeft = document.getElementById('half-left');
+var halfRight = document.getElementById('half-right');
+var timeReadout = document.getElementById('time-readout');
+
+function applyTime(ms) {
+  ms = Math.max(0, Math.min(TIMELINE_MAX, ms));
+
+  var fillColour = valueAt('colourFill', ms);
+  var fillOpacity = clamp01(valueAt('fillOpacity', ms));
+  var gap = valueAt('transform', ms);
+  var rot = valueAt('rotation', ms);
+  var skew = valueAt('skew', ms);
+  var strokeWidth = Math.max(0, valueAt('lineThickness', ms));
+  var strokeOpacity = clamp01(valueAt('lineOpacity', ms));
+  var strokeColour = valueAt('lineColour', ms);
+  var totalWidth = Math.max(2, valueAt('width', ms));
+  var totalHeight = Math.max(2, valueAt('height', ms));
+
+  var halfW = totalWidth / 2;
+  var halfH = totalHeight / 2;
+
+  [{ el: halfLeft, side: -1 }, { el: halfRight, side: 1 }].forEach(function (h) {
+    var el = h.el;
+    el.setAttribute('width', halfW);
+    el.setAttribute('height', totalHeight);
+    el.setAttribute('x', h.side < 0 ? -halfW : 0);
+    el.setAttribute('y', -halfH);
+    el.setAttribute('fill', fillColour);
+    el.setAttribute('fill-opacity', fillOpacity);
+    el.setAttribute('stroke', strokeColour);
+    el.setAttribute('stroke-width', strokeWidth);
+    el.setAttribute('stroke-opacity', strokeOpacity);
+    el.setAttribute('transform', 'translate(' + (h.side * gap / 2) + ',0)');
+  });
+
+  pivot.setAttribute('transform', 'translate(160,110) rotate(' + rot + ') skewX(' + skew + ')');
+
+  timeReadout.textContent = Math.round(ms);
+}
+
+timeline.onTimeChanged(function (evt) { applyTime(evt.val); });
+applyTime(0);
+
+// --- Simple transport controls (plays across the parent's own span) ---
+var playing = false;
+var rafId = null;
+var startWallTime = 0;
+var startTimelineTime = 0;
+
+function tick() {
+  if (objectDeleted) { stop(); return; }
+  var end = objectRow.keyframes[1].val;
+  var elapsed = performance.now() - startWallTime;
+  var t = startTimelineTime + elapsed;
+  if (t >= end) {
+    t = end;
+    timeline.setTime(t);
+    stop();
+    return;
+  }
+  timeline.setTime(t);
+  rafId = requestAnimationFrame(tick);
+}
+
+function play() {
+  if (playing || objectDeleted) return;
+  playing = true;
+  document.getElementById('btn-play').textContent = '⏸ Pause';
+  startWallTime = performance.now();
+  startTimelineTime = timeline.getTime();
+  var start = objectRow.keyframes[0].val;
+  var end = objectRow.keyframes[1].val;
+  if (startTimelineTime < start || startTimelineTime >= end) startTimelineTime = start;
+  rafId = requestAnimationFrame(tick);
+}
+
+function stop() {
+  playing = false;
+  document.getElementById('btn-play').textContent = '▶ Play';
+  if (rafId) cancelAnimationFrame(rafId);
+}
+
+document.getElementById('btn-play').addEventListener('click', function () {
+  if (playing) stop(); else play();
+});
+document.getElementById('btn-reset').addEventListener('click', function () {
+  stop();
+  if (!objectDeleted) timeline.setTime(objectRow.keyframes[0].val);
+});
+</script>
+</body>
+</html>
