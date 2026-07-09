@@ -1066,6 +1066,10 @@ methodDraw.ready(function () {
 
         if (relevant.length !== 1) { hideEasingUI(); return; }
         selectedKeyframe = relevant[0];
+        // Move the playhead to the selected keyframe so the user can edit the
+        // element's values "at" that keyframe (e.g. via auto-capture), exactly
+        // like stepping to a keyframe in After Effects.
+        _timelineInstance.setTime(selectedKeyframe.keyframe.val);
         positionEasingButton(selectedKeyframe.object, selectedKeyframe.row, selectedKeyframe.keyframe);
       });
 

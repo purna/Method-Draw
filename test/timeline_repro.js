@@ -57,37 +57,49 @@ const server = http.createServer((req, res) => {
     colour.click();
   });
 
-  // Scrub to first keyframe, set red; scrub to last keyframe, set blue
-  await page.evaluate(() => {
-    const tl = window.methodDraw.timeline.getInstance();
-    window.methodDraw.canvas.selectOnly([document.getElementById('test_rect')]);
-    tl.setTime(0);
-    window.methodDraw.canvas.setColor('fill', '#ff0000');
-  });
-  await page.waitForTimeout(100);
-  await page.evaluate(() => {
-    const tl = window.methodDraw.timeline.getInstance();
-    window.methodDraw.canvas.selectOnly([document.getElementById('test_rect')]);
-    tl.setTime(2000);
-    window.methodDraw.canvas.setColor('fill', '#0000ff');
-  });
-  await page.waitForTimeout(100);
-
-  const result = await page.evaluate(() => {
+  // Reproduce the user's flow: SELECT the first keyframe (diamond), set red;
+  // SELECT the last keyframe, set blue. Selecting must move the playhead.
+  const selectScenario = await page.evaluate(() => {
     const obj = window.methodDraw.timeline.getObjects()[0];
     const colour = obj.childRows.find(r => r.propKey === 'colourFill');
+    const tl = window.methodDraw.timeline.getInstance();
+    // select first keyframe
+    tl.select(colour.keyframes[0]);
+    const afterFirstSelect = tl.getTime();
+    window.methodDraw.canvas.selectOnly([document.getElementById('test_rect')]);
+    window.methodDraw.canvas.setColor('fill', '#ff0000');
+    // select last keyframe
+    tl.select(colour.keyframes[1]);
+    const afterLastSelect = tl.getTime();
+    window.methodDraw.canvas.selectOnly([document.getElementById('test_rect')]);
+    window.methodDraw.canvas.setColor('fill', '#0000ff');
+
     return {
+      afterFirstSelect, afterLastSelect,
       keyframes: colour.keyframes.map(k => ({ val: k.val, value: k.value, easing: k.easing })),
       css: window.methodDraw.timeline.exportCSS()
     };
   });
 
+  const result = selectScenario;
+  const playback = await page.evaluate(() => {
+    const tl = window.methodDraw.timeline.getInstance();
+    const fills = {};
+    [0, 500, 1000, 1500, 2000].forEach(t => {
+      tl.setTime(t);
+      fills[t] = document.getElementById('test_rect').getAttribute('fill');
+    });
+    return fills;
+  });
+
   console.log('=== ERRORS ===');
   console.log(errors.length ? errors.join('\n') : '(none)');
+  console.log('=== PLAYHEAD AFTER SELECT (should be 0 then 2000) ===');
+  console.log('firstSelect=' + result.afterFirstSelect + '  lastSelect=' + result.afterLastSelect);
+  console.log('=== ELEMENT FILL AT TIMES (proves interpolation/animation) ===');
+  console.log(JSON.stringify(playback, null, 2));
   console.log('=== COLOUR TRACK KEYFRAMES ===');
   console.log(JSON.stringify(result.keyframes, null, 2));
-  console.log('=== EXPORTED CSS (colour part) ===');
-  console.log(result.css.split('\n').filter(l => l.includes('fill') || l.includes('@keyframes') || l.includes('animation:')).join('\n'));
 
   await browser.close();
   server.close();
