@@ -164,7 +164,7 @@ methodDraw.ready(function () {
         locked: false,
         elementId: elementId,
         element: elem,
-        style: { height: 34, fillColor: isLightMode() ? '#dbe4f0' : '#1d2b3f' },
+        style: { height: 34 },
         keyframes: [
           { val: 0, group: parentGroupMarker },
           { val: DEFAULT_ROW_DURATION, group: parentGroupMarker }
@@ -415,18 +415,19 @@ methodDraw.ready(function () {
           locked: object.locked,
           elementId: od.elementId,
           element: elem,
-          style: { height: 34, fillColor: isLightMode() ? '#dbe4f0' : '#1d2b3f' },
-          keyframes: ((od.parentKeyframes && od.parentKeyframes.length) ? od.parentKeyframes : [{ val: 0 }, { val: DEFAULT_ROW_DURATION }])
+        style: { height: 34 },
+        keyframes: ((od.parentKeyframes && od.parentKeyframes.length) ? od.parentKeyframes : [{ val: 0 }, { val: DEFAULT_ROW_DURATION }])
             .map(function (k) { return { val: k.val, group: parentGroupMarker }; })
         };
         (od.childRows || []).forEach(function (cd) {
+          var def = PROPERTY_DEFS[cd.propKey] || { label: cd.propKey, swatch: '#6b7280' };
           object.childRows.push({
-            title: (PROPERTY_DEFS[cd.propKey] || { label: cd.propKey }).label,
+            title: def.label,
             propKey: cd.propKey,
-            objectId: od.elementId,
-            parentId: od.elementId,
-            locked: !!cd.locked,
-            style: { height: 26, fillColor: isLightMode() ? '#e9edf2' : '#222831' },
+            objectId: object.elementId,
+            parentId: object.elementId,
+            locked: false,
+            style: { height: 26 },
             keyframes: cd.keyframes.map(function (k) {
               return { val: k.val, easing: k.easing || 'linear', value: k.value };
             })
@@ -917,7 +918,7 @@ methodDraw.ready(function () {
           var startVal = readProp(object.element, key);
           object.childRows.push({
             title: def.label, propKey: key, objectId: object.elementId, parentId: object.elementId,
-            locked: false, style: { height: 26, fillColor: isLightMode() ? '#e9edf2' : '#222831' },
+            locked: false, style: { height: 26 },
             keyframes: [
               { val: 0, easing: 'linear', value: startVal },
               { val: DEFAULT_ROW_DURATION, easing: 'linear', value: def.seed(startVal) }

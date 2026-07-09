@@ -21,6 +21,7 @@
   fill: var(--z13);
 }
 
+
 .tool_button:hover {
   transform: scale(1);
 }
@@ -85,15 +86,24 @@
   z-index: 50;
 }
 
+.inverted #tools_left .tool_menu {
+  background:var(--z0);
+}
+
 #tools_left .tool_menu .tool_button {
   display: block;
-  background-color: var(--z15);
+  background-color:var(--z15);
   height: var(--x10);
   width: var(--x10);
   transform: scale(1);
   line-height: normal;
   margin: 0 auto;
 }
+
+.inverted #tools_left .tool_menu .tool_button {
+  background-color:var(--z0);
+}
+
 
 #tools_left .tool_menu .tool_button svg {
   fill: var(--z4);
@@ -102,6 +112,11 @@
 
 #tools_left .tool_menu .tool_button:hover svg {
   fill: var(--z1);
+}
+
+
+.inverted  #tools_left .tool_menu .tool_button:hover svg {
+  fill: var(--z15);
 }
 
 #tools_left .tool_menu .tool_button.current svg {

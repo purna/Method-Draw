@@ -14,10 +14,15 @@ overlay rendering, and easing-editor UI described below.
 
 ---
 
-## 1. Problem with the current implementation
+## 1. Background — the pre-v2 implementation (replaced)
 
-The current `src/js/timeline.js` stores a **full element snapshot** at each
-keyframe and replays it as a single CSS `@keyframes` block per element:
+> The model described in this section is the **old** timeline.js behaviour. It
+> has since been fully replaced by the v2 parent/child + rAF model now living in
+> the same `src/js/timeline.js`. Kept here as historical context for *why* the
+> rewrite happened.
+
+The old `src/js/timeline.js` stored a **full element snapshot** at each
+keyframe and replayed it as a single CSS `@keyframes` block per element:
 
 - `getElementProps()` captures x/y/width/height/fill/stroke/opacity/rotation/
   transform all at once (timeline.js:65).
@@ -67,17 +72,19 @@ child is a normal timeline row, but it is *linked* to the parent:
 
 ```js
 colourRow = {
-  title: 'Colour', propKey: 'colourFill', locked: false,
-  style: { height: 26, fillColor: '#2a1f1c' },
-  keyframes: [{ val: 0,    easing: 'linear' },
-              { val: 2000, easing: 'linear' }]
+  title: 'Colour', propKey: 'colourFill', objectId: 'elem_123', parentId: 'elem_123',
+  locked: false, style: { height: 26 },
+  keyframes: [{ val: 0,    easing: 'linear', value: '#c0392b' },
+              { val: 2000, easing: 'linear', value: '#2ea83a' }]
 };
 ```
 
 `propKey` identifies which property the track drives. `PROPERTY_DEFS` (see 2.4)
-describes every property: its `kind` (`color` / `number` / …), a `swatch` colour
-for the sidebar dot, and the `from`/`to` endpoints used to map a normalised
-eased value (0..1) back onto a concrete value.
+describes every property: its `kind` (`color` / `number` / `point` / …), a
+`swatch` colour for the sidebar dot, the list of element types it `appliesTo`,
+and a `seed(value)` factory that produces the **end** keyframe's concrete value
+when a track is first added. Keyframes store the **concrete** value directly
+(`kf.value`) — there is no normalised 0..1 `from`/`to` mapping.
 
 ### 2.3 Parent → child link sync
 
@@ -108,20 +115,33 @@ library `group`s.
 
 ### 2.4 Property definitions
 
+The live implementation uses these keys (note: the v2 demo's `transform`
+property was split into `position` + `rotation` + `scale`, and `opacity` was
+added):
+
 ```js
 var PROPERTY_DEFS = {
-  colourFill: { label: 'Colour', kind: 'color',  swatch: '#c0392b', from: '#c0392b', to: '#2ea83a' },
-  transform:  { label: 'Transition', kind: 'number', swatch: '#3a7bd5', from: 0, to: 40 },
-  rotation:   { label: 'Rotation', kind: 'number', swatch: '#e8b33a', from: 0, to: 180 },
-  scale:      { label: 'Scale',   kind: 'number', swatch: '#9b59b6', from: 1, to: 1.5 }
+  colourFill: { label: 'Colour',   kind: 'color',  swatch: '#c0392b', appliesTo: ALL, seed: function (v) { return v && v !== 'none' ? v : ACCENT; } },
+  position:   { label: 'Position', kind: 'point',  swatch: '#3a7bd5', appliesTo: ALL, seed: function (v) { return { x: (v ? v.x : 0) + 40, y: v ? v.y : 0 }; } },
+  rotation:   { label: 'Rotation', kind: 'number', swatch: '#e8b33a', appliesTo: ALL, seed: function (v) { return (v || 0) + 90; } },
+  scale:      { label: 'Scale',    kind: 'number', swatch: '#9b59b6', appliesTo: ALL, seed: function (v) { return (v || 1) * 1.3; } },
+  opacity:    { label: 'Opacity',  kind: 'number', swatch: '#7f8c8d', appliesTo: ALL, seed: function (v) { return v === undefined ? 0.3 : v; } }
 };
+// ALL = ['rect','ellipse','circle','path','line','polygon','polyline','text','image']
 ```
 
-`add-property` filters `PROPERTY_DEFS` to those not already present and to those
-whose `appliesTo` list includes `objectRow.objectType` (v1 introduced
-`appliesTo`; v2 keeps the derivation simple and can be extended the same way).
-Text elements additionally expose `fontSize` / `textContent`; path elements
-expose `d`.
+`appliesTo` currently lists every element type for every property (so the
+`＋` popover always offers the full set); it can be narrowed per type later.
+`kind` selects the interpolator in `interpolateValue` (color → `lerpColorHex`,
+point → per-axis `lerp` of `{x,y}`, number → `lerp`). `readProp(elem, key)`
+( timeline.js:70) knows how to read each property off a live element and
+`applyTime` writes the composed result back.
+
+`add-property` filters `PROPERTY_DEFS` to those not already present on the
+object (`getAnimatablePropertyKeys`, timeline.js:96). Text elements currently
+reuse the same generic props (no separate `fontSize` / `textContent` track yet
+— see §9) and path elements reuse `position`/`rotation`/`scale` rather than
+animating `d`.
 
 ### 2.5 Key data model summary
 
@@ -131,7 +151,7 @@ expose `d`.
 | Per-property | nested `group` sub-lane | **linked child row**, `propKey` |
 | Timing edits | regenerate `%` | drag parent block → `syncChildrenToParent` |
 | Easing | per-property only | **per-keyframe** `easing` |
-| Playback | CSS `@keyframes` + `animation-delay` | rAF → `valueAt(propKey, ms)` → set attributes |
+| Playback | CSS `@keyframes` + `animation-delay` | rAF → `valueAt(childRow, ms)` → set attributes |
 | Keyframe markers | library shape | **custom SVG overlay** (library shape = `None`) |
 
 ---
@@ -164,28 +184,49 @@ share one implementation.
 **Decision (unchanged from v1, now actually implemented): drive each canvas
 element directly from JavaScript every frame. No generated CSS `@keyframes`.**
 
-On each frame:
+On each frame `applyTime(ms)` walks every object's child rows, reads each
+track's value, and **composes** one `transform` (translate → rotate about the
+element centre → scale → untranslate) plus `fill` / `opacity`:
 
 ```js
-function valueAt(propKey, ms) {
-  var def = PROPERTY_DEFS[propKey];
-  var row = childRows.find(function (r) { return r.propKey === propKey; });
-  if (!row || row.keyframes.length < 2) return 0;            // normalised 0..1
-  var kfs = row.keyframes.slice().sort(function (a, b) { return a.val - b.val; });
-  if (ms <= kfs[0].val) return 0;
-  if (ms >= kfs[kfs.length - 1].val) return 1;
+// Returns the CONCRETE (already eased) value of one child track at time ms.
+function valueAt(childRow, ms) {
+  var kfs = childRow.keyframes.slice().sort(function (a, b) { return a.val - b.val; });
+  if (!kfs.length) return null;
+  if (ms <= kfs[0].val) return kfs[0].value;
+  if (ms >= kfs[kfs.length - 1].val) return kfs[kfs.length - 1].value;
   var k0, k1;
   for (var i = 0; i < kfs.length - 1; i++) {
     if (ms >= kfs[i].val && ms <= kfs[i + 1].val) { k0 = kfs[i]; k1 = kfs[i + 1]; break; }
   }
   var t = clamp01((ms - k0.val) / (k1.val - k0.val));
-  return getEasingFn(k0.easing)(t);                          // per-keyframe easing
+  return interpolateValue(k0, k1, t);          // per-keyframe easing, concrete value
 }
 
 function applyTime(ms) {
-  var fillT = valueAt('colourFill', ms), gapT = valueAt('transform', ms), rotT = valueAt('rotation', ms);
-  // map normalised t back through PROPERTY_DEFS[prop].from/to, then setAttribute
-  // fill / transform / opacity / width / d / textContent on row.element
+  objects.forEach(function (object) {
+    var state = { dx: 0, dy: 0, rot: 0, scale: 1, fill: null, opacity: null };
+    var center = object.center || getElementCenter(object.element);
+    object.childRows.forEach(function (row) {
+      if (row.locked) return;
+      var v = valueAt(row, ms);
+      switch (row.propKey) {
+        case 'colourFill': state.fill = v; break;
+        case 'opacity':    state.opacity = v; break;
+        case 'rotation':   state.rot = v; break;
+        case 'scale':      state.scale = v; break;
+        case 'position':   state.dx = (v.x||0) - baseX; state.dy = (v.y||0) - baseY; break;
+      }
+    });
+    if (state.dx||state.dy||state.rot||state.scale!==1) {
+      var transform = 'translate(' + state.dx + ',' + state.dy + ') '
+        + 'translate(' + center.x + ',' + center.y + ') rotate(' + state.rot + ') scale(' + state.scale + ') '
+        + 'translate(' + (-center.x) + ',' + (-center.y) + ')';
+      object.element.setAttribute('transform', transform);
+    }
+    if (state.fill !== null)    object.element.setAttribute('fill', state.fill);
+    if (state.opacity !== null) object.element.setAttribute('opacity', state.opacity);
+  });
 }
 ```
 
@@ -216,7 +257,7 @@ full control of selection visuals without fighting the library's canvas.
 
 ## 6. Easing editor popover
 
-`openEasingPopover` (v2) renders into `#easing-popover`:
+`openEasingPopover` (v2) renders into `#timeline-easing-popover`:
 
 - a **preset dropdown** with a thumbnail curve per preset and a **live motion-
   preview dot** that loops the easing inside each row (uses `getEasingFn`),
@@ -241,13 +282,13 @@ that opens the editor for the first keyframe of that track.
 - `addToTimeline(elem)` builds ONLY the parent "Animation Object" row (the
   lifetime block). Child property tracks are **not** auto-created — the user
   adds them on demand via the `＋` "add property" popover (`openPropertyPopover`),
-  which seeds start/end keyframes (`from`/`to`) from the element's live props
-  with default `easing:'linear'`.
+  which seeds start/end keyframes (concrete `value` + `seed` end value) from
+  the element's live props with default `easing:'linear'`.
 - Add `syncChildrenToParent` and wire `timeline.onDrag` / `onDragFinished`.
 
 ### Phase 2 — rAF playback driver
 - Remove `buildAndApplyAnimationCSS` and `applyTimeToRows` (CSS path).
-- Add `valueAt(propKey, ms)` + `applyTime(ms)` (Section 4) and drive them from
+- Add `valueAt(childRow, ms)` + `applyTime(ms)` (Section 4) and drive them from
   `onTimeChanged`; fold play/pause/scrub into one rAF loop updating
   `timeline.setTime`.
 
@@ -306,46 +347,65 @@ Two ways to add a keyframe:
 | File | Change |
 |------|--------|
 | `docs/ANIMATION-TIMELINE-PLAN.md` | This plan |
+| `src/js/lib/animation-timeline.js` | **Vendored** timeline widget library (`timelineModule`); loaded first in `index.html` (line 45) — provides rows, groups, keyframes, drag/scroll/zoom, `valToPx`, `TimelineKeyframeShape`, `TimelineElementType`, `TimelineInteractionMode` |
 | `src/js/easing.js` | **New** — shared easing engine (presets, bezier solver, bounce, helpers) |
-| `src/js/timeline.js` | Parent/child model, link sync, rAF playback, overlay, easing editor |
-| `src/index.html` | Load `easing.js` before `timeline.js`; add `#easing-popover`, `#property-popover`, floating button, sidebar action hooks |
+| `src/js/timeline.js` | Parent/child model, link sync, rAF playback, overlay, easing editor, persistence, export |
+| `src/index.html` | Load `easing.js` then `timeline.js` (after the vendored lib); add `#timeline-easing-popover`, `#timeline-property-popover`, floating ✎ button, sidebar action hooks, toolbar buttons (`tool_timeline_play/pause/loop/export/add_to_timeline`, `tool_add_to_timeline`, etc.) |
 | `src/css/animation-timeline.css` | Sidebar rows, popovers, curve editor, overlay/floating-button styles |
+| `test/timeline/index_v2.html` (+ `animation-timeline.js`, `.css`) | Canonical reference for the v2 data model, linking, easing engine, overlay and editor UI (the implementation tracks this but uses `position`/`rotation`/`scale`/`opacity` instead of the demo's `transform`+`from`/`to`) |
 
 ---
 
 ## 9. Risks & notes
 
-- **Library group semantics:** confirm `groupsDraggable` + a `group`-flagged
-  keyframe pair renders the parent as a single draggable block (v2 relies on
-  exactly this — verified behaviour in the example).
-- **Transform composition:** position/rotation/scale must compose into one
+- **Library group semantics:** confirmed working — `groupsDraggable` + a
+  `group`-flagged keyframe pair renders the parent as a single draggable block
+  (`timeline.js:188`, `syncChildrenToParent`).
+- **Transform composition:** position/rotation/scale compose into one
   `transform` attribute with the rotation pivot at the element centre
-  (`svgedit.utilities.getRotationAngle` / `setRotationAngle` already exist).
-- **Normalised vs absolute:** unlike the v2 demo (which maps a normalised
-  0..1 eased value through `PROPERTY_DEFS[prop].from/to`), the implementation
-  stores **concrete** keyframe values and `valueAt` returns the eased,
-  interpolated concrete value directly. `PROPERTY_DEFS[prop].from/to` are now
-  only used to *seed* the end keyframe when an element is first added.
-- **Path `d` / text:** step (hold previous value) unless point counts match;
-  full morphing is a later enhancement.
+  (`getElementCenter` + `applyTime`, timeline.js:235). This overrides any
+  pre-existing `transform` during playback, and `object.center` is captured at
+  add-time — if the element is later moved on the canvas outside animation the
+  pivot can go stale.
+- **Concrete values (not normalised):** keyframes store the concrete `value`
+  directly (`kf.value`). `interpolateValue` returns the eased, interpolated
+  concrete value; there is no `PROPERTY_DEFS[prop].from/to` mapping. `seed(v)`
+  only produces the end keyframe when a track is first added. (`valueAt` thus
+  returns the concrete value, not a 0..1 normalised one.)
+- **Path `d` / text:** not yet animated. Path elements reuse the generic
+  `position`/`rotation`/`scale`/`colourFill`/`opacity` tracks; full `d` morphing
+  and `textContent`/`fontSize` tracks are a later enhancement.
 - **Performance:** rAF applying attributes to many elements each frame is fine
   for typical drawings; revisit only if profiling shows jank.
-- **Removing CSS playback:** `buildAndApplyAnimationCSS` / `animation-delay`
-  seeking is deleted in Phase 2. The old snapshot `keyframes[].data` field is
-  dropped when the new model lands.
+- **Old CSS playback removed:** the previous `buildAndApplyAnimationCSS` /
+  `animation-delay` seeking path is gone; the snapshot `keyframes[].data` field
+  no longer exists.
+- **Known bug — persistence reload:** `loadFromData` (timeline.js:422) rebuilds
+  child rows referencing `def.label`, `propKey`, and `elementId` which are *not*
+  in scope there (the actual vars are `cd`, `object`, `object.elementId`). This
+  throws on reload whenever an object has child tracks, so **saving/reloading an
+  SVG does not currently restore property tracks**. Fix: use
+  `PROPERTY_DEFS[cd.propKey]` / `cd.propKey` / `object.elementId`.
 
 ---
 
 ## 10. Status & remaining work
 
-Phases 1–6 are implemented: easing engine, parent→child model, link sync, rAF
-driver, keyframe overlay + floating easing button, easing/popover UI,
-persistence (in-SVG `<metadata>`), and export (CSS + SMIL generators).
+Phases 1–6 are implemented: easing engine (`easing.js`), parent→child model,
+link sync, rAF driver, keyframe overlay + floating easing button,
+easing/popover UI, persistence (in-SVG `<metadata>`), and export (CSS + SMIL
+generators + the `tool_timeline_export` download button, wired in `initTimeline`).
 
 Remaining:
-- A dedicated **Export animation** button/menu entry wiring `exportCSS()` /
-  `exportSMIL()` to a download (UI only; logic is done).
-- **Path `d` / text-content** tracks (step-hold for now).
+- **Fix `loadFromData` persistence reload (bug).** The child-row rebuild at
+  timeline.js:422 references out-of-scope `def` / `propKey` / `elementId`, so
+  reloading an SVG currently restores only parent rows — property tracks are
+  lost. Highest priority; logic is otherwise done.
+- **Path `d` / `textContent` / `fontSize` tracks.** Not yet exposed; path
+  elements reuse the generic tracks for now. (Step-hold is a reasonable first
+  cut; full `d` morphing is a later enhancement.)
 - The playback `transform` is recomposed about the element's centre and
-  overrides any pre-existing transform on the element during animation.
+  overrides any pre-existing transform on the element during animation
+  (`object.center` captured at add-time can go stale if the element is moved
+  outside animation).
 - Bounce easings export as `linear` in CSS (SMIL keeps the spline fallback).
