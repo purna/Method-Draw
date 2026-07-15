@@ -105,7 +105,10 @@
 }
 
 #timeline-panel .outline-scroll-container {
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 #timeline-panel .outline-node {
@@ -257,11 +260,55 @@
 #timeline-panel .icon-btn:hover { background: var(--z12); color: var(--z15); }
 #timeline-panel .icon-btn.del-btn:hover,
 #timeline-panel .icon-btn.del-row-btn:hover { background: var(--b6); color: var(--z15); }
+#timeline-panel .icon-btn.add-btn {
+  background: var(--accent7);
+  color: var(--z15);
+  border-radius: 50%;
+  font-weight: 700;
+}
+#timeline-panel .icon-btn.add-btn:hover { background: var(--accent9); }
 #timeline-panel .icon-btn.lock-btn.is-locked { color: var(--b7); }
+
+/* Custom vertical scrollbar thumb/track colours for the outline panel, so
+   it matches the app's dark/light theme instead of the browser default. */
+#timeline-panel .outline-scroll-container::-webkit-scrollbar-thumb {
+  background: var(--z3);
+}
+#timeline-panel .outline-scroll-container::-webkit-scrollbar-track {
+  background: var(--z0);
+}
 #timeline-panel .outline-row.locked .add-btn,
 #timeline-panel .outline-row.locked .del-btn,
 #timeline-panel .outline-row.locked .del-row-btn,
+#timeline-panel .outline-row.locked .rename-btn,
 #timeline-panel .outline-row.locked .row-ease-btn { opacity: .3; pointer-events: none; }
+
+/* Inline rename input for an Animation Object's name */
+#timeline-panel .outline-row .row-title-input {
+  flex: 1 1 auto; min-width: 0; font: inherit; color: inherit;
+  background: var(--z0); border: 1px solid var(--accent9); border-radius: 3px;
+  padding: 1px 4px; margin: 0;
+}
+
+/* Right-click context menu on the timeline canvas */
+.timeline-context-menu {
+  position: fixed; display: none; background: var(--z2); border: 1px solid var(--z3);
+  border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,.5); padding: 4px; z-index: 120;
+  min-width: 190px; font-size: 12px;
+}
+.timeline-context-menu button {
+  display: block; width: 100%; text-align: left; background: transparent; border: none;
+  color: var(--z15); padding: 7px 10px; border-radius: 4px; cursor: pointer; font-size: 12px;
+  font-weight: 400; line-height: 140%;
+}
+.timeline-context-menu button:hover { background: var(--accent7); }
+.timeline-context-menu button:disabled { opacity: .4; cursor: default; }
+.timeline-context-menu button:disabled:hover { background: transparent; }
+.timeline-context-menu .ctx-label {
+  padding: 6px 10px 2px; font-size: 10px; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--z9);
+}
+.timeline-context-menu .ctx-sep { height: 1px; background: var(--z3); margin: 4px 2px; }
 
 /* Floating easing-edit button positioned at the selected keyframe */
 .timeline-floating-icon-btn {

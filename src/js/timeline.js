@@ -25,6 +25,11 @@ methodDraw.ready(function () {
     var HEADER_HEIGHT = 45;
     var LEFT_MARGIN = 25;
     var DEFAULT_ROW_DURATION = 2000;
+    // Only exposed to registered svgCanvas extensions (see initTimeline) —
+    // used to refresh the selection box/grips while animating, since they
+    // don't otherwise notice attribute changes we make outside of a mouse
+    // drag.
+    var canvasSelectorManager = null;
 
     // --- small math helpers --------------------------------------------------
 
@@ -73,18 +78,29 @@ methodDraw.ready(function () {
         case 'opacity': return parseFloat(elem.getAttribute('opacity') || '1');
         case 'rotation':
           try { return svgedit.utilities.getRotationAngle(elem) || 0; } catch (e) { return 0; }
-        case 'position':
-          return { x: parseFloat(elem.getAttribute('x') || 0), y: parseFloat(elem.getAttribute('y') || 0) };
-        case 'scale': return 1;
+        // Position is always the element's bbox center, for every shape
+        // type. getBBox() reflects the element's real current geometry no
+        // matter how it got there (x/y attributes on a rect, a rewritten
+        // 'd' on a path after a node edit, etc.), so this is the one read
+        // that's actually accurate for path/line/polygon/polyline shapes —
+        // those never carried a meaningful x/y attribute to read from.
+        case 'position': return getElementCenter(elem);
+        // Scale isn't a native SVG attribute in this transform-delta model,
+        // so there's nothing on the element itself to read. Fall back to the
+        // last value this timeline applied (tracked on the object record by
+        // its id), defaulting to 1 for an element that's never been scaled.
+        case 'scale': return (lastScaleByElementId[elem.id] !== undefined) ? lastScaleByElementId[elem.id] : 1;
         default: return null;
       }
     }
+
+    var lastScaleByElementId = {};
 
     var PROPERTY_DEFS = {
       colourFill: { label: 'Colour', kind: 'color', swatch: '#c0392b', appliesTo: ['rect', 'ellipse', 'circle', 'path', 'line', 'polygon', 'polyline', 'text', 'image'],
         seed: function (v) { return v && v !== 'none' ? v : ACCENT; } },
       position: { label: 'Position', kind: 'point', swatch: '#3a7bd5', appliesTo: ['rect', 'ellipse', 'circle', 'path', 'line', 'polygon', 'polyline', 'text', 'image'],
-        seed: function (v) { return { x: (v ? v.x : 0) + 40, y: v ? v.y : 0 }; } },
+        seed: function (v) { return { x: (v ? v.x : 0) + 80, y: v ? v.y : 0 }; } },
       rotation: { label: 'Rotation', kind: 'number', swatch: '#e8b33a', appliesTo: ['rect', 'ellipse', 'circle', 'path', 'line', 'polygon', 'polyline', 'text', 'image'],
         seed: function (v) { return (v || 0) + 90; } },
       scale: { label: 'Scale', kind: 'number', swatch: '#9b59b6', appliesTo: ['rect', 'ellipse', 'circle', 'path', 'line', 'polygon', 'polyline', 'text', 'image'],
@@ -100,6 +116,22 @@ methodDraw.ready(function () {
     }
 
     // --- helpers -------------------------------------------------------------
+
+    function escapeHtml(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+
+    // Distinguishable default name for a newly-tracked object, e.g. "Rect",
+    // "Rect 2", "Path 3" — every object used to default to the identical,
+    // indistinguishable "Animation Object" title, which made it impossible
+    // to tell rows apart in the outline once more than one was tracked.
+    function defaultObjectTitle(objectType) {
+      var base = objectType ? (objectType.charAt(0).toUpperCase() + objectType.slice(1)) : 'Object';
+      var count = objects.filter(function (o) { return o.objectType === objectType; }).length;
+      return count === 0 ? base : base + ' ' + (count + 1);
+    }
 
     function findObject(elementId) {
       for (var i = 0; i < objects.length; i++) {
@@ -144,8 +176,9 @@ methodDraw.ready(function () {
 
       var objectType = elem.nodeName.toLowerCase();
       var center = getElementCenter(elem);
+      var title = defaultObjectTitle(objectType);
       var object = {
-        title: 'Animation Object',
+        title: title,
         objectType: objectType,
         elementId: elementId,
         element: elem,
@@ -153,12 +186,13 @@ methodDraw.ready(function () {
         expanded: true,
         removed: false,
         center: center,
+        restTransform: elem.getAttribute('transform') || '',
         childRows: [],
         _lastStart: 0
       };
 
       object.parentRow = {
-        title: 'Animation Object',
+        title: title,
         objectId: elementId,
         isParent: true,
         locked: false,
@@ -234,10 +268,14 @@ methodDraw.ready(function () {
 
     function applyTime(ms) {
       suppressKeyframeCapture = true;
+      var selectedIds = null;
+      if (canvasSelectorManager && window.methodDraw.canvas && window.methodDraw.canvas.getSelectedElems) {
+        selectedIds = (window.methodDraw.canvas.getSelectedElems() || []).filter(Boolean).map(function (e) { return e.id; });
+      }
       objects.forEach(function (object) {
         if (object.removed || !object.element || !object.element.parentNode) return;
-        var state = { dx: 0, dy: 0, rot: 0, scale: 1, fill: null, opacity: null };
-        var center = object.center || getElementCenter(object.element);
+        var state = { rot: 0, scale: 1, fill: null, opacity: null, position: null };
+        var elem = object.element;
         object.childRows.forEach(function (childRow) {
           if (childRow.locked) return;
           var v = valueAt(childRow, ms);
@@ -246,26 +284,47 @@ methodDraw.ready(function () {
             case 'colourFill': state.fill = v; break;
             case 'opacity': state.opacity = v; break;
             case 'rotation': state.rot = v; break;
-            case 'scale': state.scale = v; break;
-            case 'position':
-              state.dx = (v.x || 0) - (object.element.getAttribute('x') ? parseFloat(object.element.getAttribute('x')) : 0);
-              state.dy = (v.y || 0) - (object.element.getAttribute('y') ? parseFloat(object.element.getAttribute('y')) : 0);
-              break;
+            case 'scale': state.scale = v; lastScaleByElementId[elem.id] = v; break;
+            case 'position': state.position = v; break;
           }
         });
 
-        var elem = object.element;
-        var hasTransform = state.dx || state.dy || state.rot || state.scale !== 1;
-        if (hasTransform) {
-          var transform = 'translate(' + state.dx + ',' + state.dy + ') ' +
-            'translate(' + center.x + ',' + center.y + ') ' +
+        // Base = the element's real bbox center, recomputed fresh every
+        // frame. getBBox() ignores the element's own `transform` attribute
+        // (i.e. ignores whatever we applied last frame), so this always
+        // reflects the untouched rest geometry — and it self-corrects if the
+        // shape gets reshaped on canvas (a path node dragged, a rect
+        // resized) instead of freezing at whatever it looked like the
+        // moment it was added to the timeline.
+        var base = getElementCenter(elem);
+        var dx = 0, dy = 0;
+        if (state.position) {
+          dx = state.position.x - base.x;
+          dy = state.position.y - base.y;
+        }
+        // Pivot is the element's CURRENT (possibly moved) center, so
+        // rotate/scale always happen in place around where the object
+        // actually is right now rather than orbiting its original spot.
+        var pivot = { x: base.x + dx, y: base.y + dy };
+
+        var animTransform = '';
+        if (dx || dy || state.rot || state.scale !== 1) {
+          animTransform = 'translate(' + pivot.x + ',' + pivot.y + ') ' +
             'rotate(' + state.rot + ') ' +
             'scale(' + state.scale + ') ' +
-            'translate(' + (-center.x) + ',' + (-center.y) + ')';
-          elem.setAttribute('transform', transform);
+            'translate(' + (-base.x) + ',' + (-base.y) + ')';
         }
+        var restTransform = object.restTransform || '';
+        var finalTransform = (restTransform ? restTransform + ' ' : '') + animTransform;
+        if (finalTransform.trim()) elem.setAttribute('transform', finalTransform.trim());
+        else if (elem.getAttribute('transform') != null) elem.removeAttribute('transform');
+
         if (state.fill !== null) elem.setAttribute('fill', state.fill);
         if (state.opacity !== null) elem.setAttribute('opacity', state.opacity);
+
+        if (selectedIds && selectedIds.indexOf(elem.id) !== -1) {
+          try { canvasSelectorManager.requestSelector(elem).resize(); } catch (e) { /* ignore */ }
+        }
       });
       suppressKeyframeCapture = false;
     }
@@ -361,6 +420,7 @@ methodDraw.ready(function () {
           return {
             elementId: obj.elementId,
             objectType: obj.objectType,
+            title: obj.title,
             expanded: obj.expanded,
             locked: obj.locked,
             parentKeyframes: obj.parentRow.keyframes.map(function (kf) { return { val: kf.val }; }),
@@ -396,8 +456,9 @@ methodDraw.ready(function () {
       data.objects.forEach(function (od) {
         var elem = document.getElementById(od.elementId);
         if (!elem) return; // element missing from document; skip
+        var title = od.title || defaultObjectTitle(od.objectType);
         var object = {
-          title: 'Animation Object',
+          title: title,
           objectType: od.objectType,
           elementId: od.elementId,
           element: elem,
@@ -405,11 +466,12 @@ methodDraw.ready(function () {
           expanded: od.expanded !== false,
           removed: false,
           center: getElementCenter(elem),
+          restTransform: elem.getAttribute('transform') || '',
           childRows: [],
           _lastStart: 0
         };
         object.parentRow = {
-          title: 'Animation Object',
+          title: title,
           objectId: od.elementId,
           isParent: true,
           locked: object.locked,
@@ -426,7 +488,7 @@ methodDraw.ready(function () {
             propKey: cd.propKey,
             objectId: object.elementId,
             parentId: object.elementId,
-            locked: false,
+            locked: !!cd.locked,
             style: { height: 26 },
             keyframes: cd.keyframes.map(function (k) {
               return { val: k.val, easing: k.easing || 'linear', value: k.value };
@@ -509,7 +571,7 @@ methodDraw.ready(function () {
       var css = '';
       objects.forEach(function (obj) {
         if (obj.removed || !obj.element) return;
-        var center = obj.center || getElementCenter(obj.element);
+        var base = obj.element ? getElementCenter(obj.element) : { x: 0, y: 0 };
         var transformProps = obj.childRows.filter(function (r) { return ['position', 'rotation', 'scale'].indexOf(r.propKey) !== -1 && !r.locked; });
         var otherProps = obj.childRows.filter(function (r) { return ['colourFill', 'opacity'].indexOf(r.propKey) !== -1 && !r.locked; });
 
@@ -534,11 +596,12 @@ methodDraw.ready(function () {
               if (r.propKey === 'rotation') rot = v;
               else if (r.propKey === 'scale') scale = v;
               else if (r.propKey === 'position') {
-                dx = (v.x || 0) - (obj.element.getAttribute('x') ? parseFloat(obj.element.getAttribute('x')) : 0);
-                dy = (v.y || 0) - (obj.element.getAttribute('y') ? parseFloat(obj.element.getAttribute('y')) : 0);
+                dx = (v.x || 0) - base.x;
+                dy = (v.y || 0) - base.y;
               }
             });
-            var transform = 'translate(' + dx + 'px,' + dy + 'px) translate(' + center.x + 'px,' + center.y + 'px) rotate(' + rot + 'deg) scale(' + scale + ') translate(' + (-center.x) + 'px,' + (-center.y) + 'px)';
+            var pivot = { x: base.x + dx, y: base.y + dy };
+            var transform = 'translate(' + pivot.x + 'px,' + pivot.y + 'px) rotate(' + rot + 'deg) scale(' + scale + ') translate(' + (-base.x) + 'px,' + (-base.y) + 'px)';
             css += '  ' + pct + '% { transform: ' + transform + '; }\n';
           });
           css += '}\n';
@@ -570,7 +633,7 @@ methodDraw.ready(function () {
       var out = [];
       objects.forEach(function (obj) {
         if (obj.removed || !obj.element) return;
-        var center = obj.center || getElementCenter(obj.element);
+        var center = getElementCenter(obj.element);
         obj.childRows.forEach(function (r) {
           if (r.locked || r.keyframes.length < 2) return;
           var kfs = r.keyframes.slice().sort(function (a, b) { return a.val - b.val; });
@@ -594,9 +657,7 @@ methodDraw.ready(function () {
           } else if (r.propKey === 'scale') {
             out.push('<animateTransform ' + base + ' attributeName="transform" type="scale" additive="sum" values="' + kfs.map(function (k) { return k.value + ' ' + k.value; }).join(';') + '"/>');
           } else if (r.propKey === 'position') {
-            var bx = obj.element.getAttribute('x') ? parseFloat(obj.element.getAttribute('x')) : 0;
-            var by = obj.element.getAttribute('y') ? parseFloat(obj.element.getAttribute('y')) : 0;
-            out.push('<animateTransform ' + base + ' attributeName="transform" type="translate" additive="sum" values="' + kfs.map(function (k) { return ((k.value.x || 0) - bx) + ' ' + ((k.value.y || 0) - by); }).join(';') + '"/>');
+            out.push('<animateTransform ' + base + ' attributeName="transform" type="translate" additive="sum" values="' + kfs.map(function (k) { return ((k.value.x || 0) - center.x) + ' ' + ((k.value.y || 0) - center.y); }).join(';') + '"/>');
           }
         });
       });
@@ -658,11 +719,12 @@ methodDraw.ready(function () {
       while (svg.firstChild) svg.removeChild(svg.firstChild);
       if (!_timelineInstance) return;
 
+      var scrollTop = _timelineInstance.scrollTop || 0;
       computeRowLayout().forEach(function (entry) {
         if (entry.row.isParent) return;
         entry.row.keyframes.forEach(function (kf) {
           var x = Math.floor(_timelineInstance.valToPx(kf.val) - _timelineInstance.scrollLeft + LEFT_MARGIN);
-          var y = Math.floor(entry.center);
+          var y = Math.floor(entry.center - scrollTop);
           var selected = selectedKeyframe && selectedKeyframe.keyframe === kf;
           var el = document.createElementNS(SVG_NS, 'polygon');
           var r = selected ? 6 : 4.5;
@@ -704,8 +766,9 @@ methodDraw.ready(function () {
       if (!layout) { hideEasingUI(); return; }
       var timelineRect = document.getElementById('timeline').getBoundingClientRect();
       var x = _timelineInstance.valToPx(kf.val) - _timelineInstance.scrollLeft + LEFT_MARGIN;
+      var y = layout.center - (_timelineInstance.scrollTop || 0);
       easingBtn.style.left = Math.round(timelineRect.left + x + 7) + 'px';
-      easingBtn.style.top = Math.round(timelineRect.top + layout.center - 10) + 'px';
+      easingBtn.style.top = Math.round(timelineRect.top + y - 10) + 'px';
       easingBtn.style.display = 'flex';
     }
 
@@ -888,6 +951,87 @@ methodDraw.ready(function () {
         : 'cubic-bezier(' + curveCoords[0].toFixed(2) + ', ' + curveCoords[1].toFixed(2) + ', ' + curveCoords[2].toFixed(2) + ', ' + curveCoords[3].toFixed(2) + ')';
     }
 
+    // Nearest keyframe to ms on a row, within a forgiving tolerance (2% of
+    // the timeline's total duration) — used for the "Delete Nearest
+    // Keyframe" context menu item so it only offers to delete something
+    // actually close to where the user right-clicked.
+    function nearestKeyframeNear(row, ms) {
+      var tolerance = Math.max(20, timelineDuration * 0.02);
+      var near = null, best = Infinity;
+      row.keyframes.forEach(function (kf) {
+        var d = Math.abs(kf.val - ms);
+        if (d < best) { best = d; near = kf; }
+      });
+      return (near && best <= tolerance) ? near : null;
+    }
+
+    // --- right-click context menu on the timeline canvas ---------------------
+
+    var ctxMenu = document.getElementById('timeline-context-menu');
+
+    function hideTimelineContextMenu() {
+      if (ctxMenu) ctxMenu.style.display = 'none';
+    }
+
+    function openTimelineContextMenu(clientX, clientY, object, row, ms) {
+      if (!ctxMenu) return;
+      var isParent = !!row.isParent;
+      var locked = object.locked || (!isParent && row.locked);
+      var html = '';
+      if (isParent) {
+        html += '<div class="ctx-label">' + escapeHtml(object.title) + '</div>'
+          + '<button type="button" data-ctx="add-property"' + (locked ? ' disabled' : '') + '>Add Property Track&hellip;</button>'
+          + '<button type="button" data-ctx="rename">Rename&hellip;</button>'
+          + '<div class="ctx-sep"></div>'
+          + '<button type="button" data-ctx="lock">' + (object.locked ? 'Unlock' : 'Lock') + ' Object</button>';
+      } else {
+        var def = PROPERTY_DEFS[row.propKey] || { label: row.title || row.propKey };
+        var near = nearestKeyframeNear(row, ms);
+        html += '<div class="ctx-label">' + escapeHtml(object.title) + ' — ' + escapeHtml(def.label) + '</div>'
+          + '<button type="button" data-ctx="add-keyframe"' + (locked ? ' disabled' : '') + '>Add Keyframe Here</button>'
+          + '<button type="button" data-ctx="delete-keyframe"' + ((locked || !near) ? ' disabled' : '') + '>Delete Nearest Keyframe</button>'
+          + '<div class="ctx-sep"></div>'
+          + '<button type="button" data-ctx="lock">' + (row.locked ? 'Unlock' : 'Lock') + ' Track</button>';
+      }
+      ctxMenu.innerHTML = html;
+      ctxMenu.style.display = 'block';
+
+      var left = clientX, top = clientY;
+      if (left + ctxMenu.offsetWidth > window.innerWidth) left = window.innerWidth - ctxMenu.offsetWidth - 6;
+      if (top + ctxMenu.offsetHeight > window.innerHeight) top = window.innerHeight - ctxMenu.offsetHeight - 6;
+      ctxMenu.style.left = Math.round(left) + 'px';
+      ctxMenu.style.top = Math.round(top) + 'px';
+
+      ctxMenu.querySelectorAll('button[data-ctx]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var action = this.getAttribute('data-ctx');
+          hideTimelineContextMenu();
+          if (action === 'add-keyframe') {
+            addKeyframeToRow(object, row, ms);
+            refreshAll();
+          } else if (action === 'delete-keyframe') {
+            var kf = nearestKeyframeNear(row, ms);
+            if (kf) {
+              var idx = row.keyframes.indexOf(kf);
+              if (idx !== -1) row.keyframes.splice(idx, 1);
+              hideEasingUI();
+              refreshAll();
+            }
+          } else if (action === 'add-property') {
+            var addBtn = document.querySelector('.outline-row.parent[data-object="' + object.elementId + '"] [data-action="add-property"]');
+            if (addBtn) openPropertyPopover(addBtn, object);
+          } else if (action === 'rename') {
+            var rowEl = document.querySelector('.outline-row.parent[data-object="' + object.elementId + '"]');
+            if (rowEl) startRenameObject(rowEl);
+          } else if (action === 'lock') {
+            if (isParent) { object.locked = !object.locked; hideEasingUI(); }
+            else { row.locked = !row.locked; }
+            refreshAll();
+          }
+        });
+      });
+    }
+
     // --- add property popover -----------------------------------------------
 
     function openPropertyPopover(anchorEl, object) {
@@ -930,6 +1074,42 @@ methodDraw.ready(function () {
       });
     }
 
+    // Swap a parent row's title span for an editable input. Commits the new
+    // name on blur or Enter, reverts on Escape.
+    function startRenameObject(rowEl) {
+      if (!rowEl) return;
+      var obj = findObject(rowEl.getAttribute('data-object'));
+      if (!obj || obj.locked) return;
+      var titleEl = rowEl.querySelector('.row-title');
+      if (!titleEl || titleEl.tagName === 'INPUT') return;
+
+      var input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'row-title-input';
+      input.value = obj.title;
+      input.maxLength = 60;
+      titleEl.replaceWith(input);
+      input.focus();
+      input.select();
+
+      var committed = false;
+      function commit() {
+        if (committed) return;
+        committed = true;
+        var val = input.value.trim();
+        if (val) { obj.title = val; obj.parentRow.title = val; }
+        refreshAll();
+      }
+      input.addEventListener('blur', commit);
+      input.addEventListener('mousedown', function (e) { e.stopPropagation(); });
+      input.addEventListener('click', function (e) { e.stopPropagation(); });
+      input.addEventListener('keydown', function (e) {
+        e.stopPropagation();
+        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+        else if (e.key === 'Escape') { e.preventDefault(); committed = true; refreshAll(); }
+      });
+    }
+
     // --- custom sidebar (outline) -------------------------------------------
 
     function renderOutline() {
@@ -941,8 +1121,9 @@ methodDraw.ready(function () {
         html += '<div class="outline-row parent' + (object.expanded ? '' : ' collapsed') + (object.locked ? ' locked' : '') + '" data-object="' + object.elementId + '" style="height:' + object.parentRow.style.height + 'px">'
           + '<span class="toggle" data-action="toggle">&#9662;</span>'
           + '<span class="dot" style="background:#3a7bd5"></span>'
-          + '<span class="row-title" data-action="toggle">Animation Object</span>'
+          + '<span class="row-title" data-action="toggle" title="Double-click to rename">' + escapeHtml(object.title) + '</span>'
           + '<span class="row-actions">'
+          + '  <button type="button" class="icon-btn rename-btn" data-action="rename-parent" title="Rename"><svg viewBox="0 0 16 16" width="14" height="14"><path d="M2 12.5V14h1.5l8.1-8.1-1.5-1.5L2 12.5zM13.7 3.3a1 1 0 000-1.4l-1.6-1.6a1 1 0 00-1.4 0L9.3 1.7l3 3 1.4-1.4z" fill="currentColor"/></svg></button>'
           + '  <button type="button" class="icon-btn lock-btn' + (object.locked ? ' is-locked' : '') + '" data-action="lock-parent" title="Lock track"><svg viewBox="0 0 16 16" width="16" height="16"><path d="M4 14h8V9H4v5zM6 9V4.5a2.5 2.5 0 015 0V9" fill="currentColor"/></svg></button>'
           + '  <button type="button" class="icon-btn add-btn" data-action="add-property" title="Add property track">&#65291;</button>'
           + '  <button type="button" class="icon-btn del-row-btn" data-action="delete-parent" title="Delete object">&#215;</button>'
@@ -996,6 +1177,18 @@ methodDraw.ready(function () {
           if (obj) openPropertyPopover(this, obj);
         });
       });
+      container.querySelectorAll('[data-action="rename-parent"]').forEach(function (btn) {
+        btn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          startRenameObject(btn.closest('.outline-row'));
+        });
+      });
+      container.querySelectorAll('.outline-row.parent .row-title').forEach(function (el) {
+        el.addEventListener('dblclick', function (e) {
+          e.stopPropagation();
+          startRenameObject(this.closest('.outline-row'));
+        });
+      });
       container.querySelectorAll('[data-action="lock-child"]').forEach(function (btn) {
         btn.addEventListener('click', function (e) {
           e.stopPropagation();
@@ -1032,6 +1225,7 @@ methodDraw.ready(function () {
       renderOutline();
       renderKeyframeOverlay();
       applyTime(_timelineInstance.getTime());
+      syncOutlineScroll();
     }
 
     // --- timeline events ----------------------------------------------------
@@ -1045,8 +1239,8 @@ methodDraw.ready(function () {
         objects.forEach(function (obj) { syncChildrenToParent(evt, obj); });
         renderKeyframeOverlay();
       });
-      _timelineInstance.onScroll(function () { renderKeyframeOverlay(); repositionFloatingUI(); });
-      _timelineInstance.onScrollFinished(function () { renderKeyframeOverlay(); repositionFloatingUI(); });
+      _timelineInstance.onScroll(function () { hideTimelineContextMenu(); syncOutlineScroll(); renderKeyframeOverlay(); repositionFloatingUI(); });
+      _timelineInstance.onScrollFinished(function () { hideTimelineContextMenu(); syncOutlineScroll(); renderKeyframeOverlay(); repositionFloatingUI(); });
 
       _timelineInstance.onSelected(function (evt) {
         renderKeyframeOverlay();
@@ -1076,7 +1270,12 @@ methodDraw.ready(function () {
 
       _timelineInstance.onTimeChanged(function (evt) {
         currentTime = _timelineInstance.getTime();
-        if (!isPlaying) applyTime(currentTime);
+        // Always apply, whether the user is scrubbing or the rAF loop is
+        // driving playback. applyTime() already guards re-entrant capture
+        // via suppressKeyframeCapture, so there's no need to skip it while
+        // isPlaying — skipping it here was silently disabling canvas
+        // playback entirely (values only ever showed up while scrubbing).
+        applyTime(currentTime);
         repositionFloatingUI();
       });
 
@@ -1090,6 +1289,20 @@ methodDraw.ready(function () {
           row.keyframes.push({ val: val, easing: 'linear', value: currentVal });
           refreshAll();
         }
+      });
+
+      _timelineInstance.onContextMenu(function (event) {
+        // No resolvable row under the cursor (empty space below the last
+        // track, etc.) — let the browser's own context menu show instead.
+        if (!event.target || !event.target.row || !event.point) return;
+        if (event.args && event.args.preventDefault) event.args.preventDefault();
+        var row = event.target.row;
+        var obj = objects.filter(function (o) { return o.parentRow === row || o.childRows.indexOf(row) !== -1; })[0];
+        if (!obj) return;
+        var ms = Math.max(0, Math.min(timelineDuration, event.point.val));
+        var cx = event.args ? event.args.clientX : 0;
+        var cy = event.args ? event.args.clientY : 0;
+        openTimelineContextMenu(cx, cy, obj, row, ms);
       });
 
       if (easingBtn) easingBtn.addEventListener('click', function (e) {
@@ -1107,6 +1320,12 @@ methodDraw.ready(function () {
           hideEasingUI();
           if (motionRafId) cancelAnimationFrame(motionRafId);
         }
+        if (ctxMenu && ctxMenu.style.display !== 'none' && !ctxMenu.contains(e.target)) {
+          hideTimelineContextMenu();
+        }
+      });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') hideTimelineContextMenu();
       });
     }
 
@@ -1203,6 +1422,26 @@ methodDraw.ready(function () {
       var tracked = canvasSelected.map(function (elem) { return findObject(elem.id); }).filter(Boolean);
       if (tracked.length) {
         tracked.forEach(function (obj) {
+          // An object can be "tracked" (added to the timeline) but still have
+          // zero property tracks, since tracks are add-on-demand. Previously
+          // this branch just iterated an empty childRows array and did
+          // nothing at all, silently — the toolbar button appeared broken.
+          // Seed the default animatable tracks for this element type so a
+          // keyframe actually gets created.
+          if (!obj.childRows.length) {
+            getAnimatablePropertyKeys(obj.objectType).forEach(function (key) {
+              var def = PROPERTY_DEFS[key];
+              var startVal = readProp(obj.element, key);
+              obj.childRows.push({
+                title: def.label, propKey: key, objectId: obj.elementId, parentId: obj.elementId,
+                locked: false, style: { height: 26 },
+                keyframes: [
+                  { val: 0, easing: 'linear', value: startVal },
+                  { val: DEFAULT_ROW_DURATION, easing: 'linear', value: startVal }
+                ]
+              });
+            });
+          }
           obj.childRows.forEach(function (row) { addKeyframeToRow(obj, row, ms); });
         });
         refreshAll();
@@ -1213,7 +1452,13 @@ methodDraw.ready(function () {
       // (parent object only; tracks are added on demand).
       if (canvasSelected.length) {
         canvasSelected.forEach(function (elem) { addToTimeline(elem); });
+        refreshAll();
+        return;
       }
+
+      // Nothing selected on the canvas and nothing usable in the timeline
+      // selection either — tell the user why, rather than doing nothing.
+      if (window.$ && $.alert) $.alert('Select an object on the canvas first.');
     }
 
     function removeKeyframe() {
@@ -1226,10 +1471,30 @@ methodDraw.ready(function () {
       refreshAll();
     }
 
+    // Mirror the timeline's internal vertical row-scroll onto the outline
+    // (legend) sidebar so row N's name always lines up with row N's
+    // keyframes. #outline-scroll-container is a real scrollable element
+    // (see animation-timeline.css) with its own native scrollbar; this
+    // keeps it following the timeline when the *timeline* side is the one
+    // that scrolled (e.g. ctrl+scroll zoom, programmatic scroll).
+    var syncingOutlineScroll = false;
+    function syncOutlineScroll() {
+      if (!_timelineInstance) return;
+      var el = document.getElementById('outline-scroll-container');
+      if (!el) return;
+      var top = _timelineInstance.scrollTop || 0;
+      if (el.scrollTop !== top) {
+        syncingOutlineScroll = true;
+        el.scrollTop = top;
+        syncingOutlineScroll = false;
+      }
+    }
+
     function outlineMouseWheel(e) {
       if (!_timelineInstance) return;
       e.preventDefault();
       _timelineInstance.scrollTop = _timelineInstance.scrollTop + e.deltaY;
+      syncOutlineScroll();
     }
 
     // --- interaction modes --------------------------------------------------
@@ -1344,6 +1609,29 @@ methodDraw.ready(function () {
       if (exportBtn) exportBtn.addEventListener('click', function () { exportAnimation(); });
 
       hookPersistence();
+
+      // The outline sidebar is now a real scrollable element (see
+      // animation-timeline.css) so it gets a visible, draggable native
+      // scrollbar. Forward any scroll on it (thumb-drag, touch, keyboard —
+      // wheel-while-hovering is already handled by outlineMouseWheel) into
+      // the timeline's own row-scroll so the two stay locked together.
+      var outlineScrollEl = document.getElementById('outline-scroll-container');
+      if (outlineScrollEl) {
+        outlineScrollEl.addEventListener('scroll', function () {
+          if (!_timelineInstance || syncingOutlineScroll) return;
+          if (_timelineInstance.scrollTop !== outlineScrollEl.scrollTop) {
+            _timelineInstance.scrollTop = outlineScrollEl.scrollTop;
+          }
+        });
+      }
+
+      if (window.methodDraw.canvas.addExtension) {
+        window.methodDraw.canvas.addExtension('mdTimelineSelectorSync', function (S) {
+          canvasSelectorManager = S.selectorManager;
+          return {};
+        });
+      }
+
       refreshAll();
     }
 
