@@ -113,8 +113,6 @@ Below is a summary of the important files and directories within the `src` direc
 | `js/dao.js`                    | Handles Data Access Object logic for saving the SVG to a string and preparing it for download.                                           |
 | `js/selectedChanged.js`        | Handles the logic that runs when the set of selected elements on the canvas changes.                                                     |
 | `js/svgtransformlist.js`        | Utilities for parsing and manipulating SVG transform lists.                                                                          |
-
-
 | `js/timeline.js`               | Manages the animation timeline, including keyframe creation, property interpolation, and playback logic.                                  |
 | `js/lib/`                      | Third-party JavaScript libraries like jQuery, jscolor, and the animation timeline library.                                               |
 | `js/lib/animation-timeline.js` | The standalone library used to render and manage the interactive timeline UI.                                                            |
